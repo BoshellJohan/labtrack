@@ -1,0 +1,31 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  USER
+}
+
+model User {
+  id                 String   @id @default(uuid())
+  username           String   @unique
+  passwordHash       String
+  fullName           String
+  role               Role     @default(USER)
+  mustChangePassword Boolean  @default(true)
+  active             Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  madeById String?
+  madeBy   User?   @relation("UserCreatedBy", fields: [madeById], references: [id])
+  created  User[]  @relation("UserCreatedBy")
+
+  @@index([active])
+}

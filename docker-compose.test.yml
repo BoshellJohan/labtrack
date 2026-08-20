@@ -1,0 +1,9 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: labtrack
+      POSTGRES_PASSWORD: labtrack
+      POSTGRES_DB: labtrack
+    ports:
+      - '5432:5432'
