@@ -1,1 +1,7 @@
 .superpowers/
+node_modules/
+dist/
+.env
+*.log
+.angular/
+coverage/
