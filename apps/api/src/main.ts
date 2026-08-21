@@ -1,9 +1,8 @@
 import { NestFactory } from '@nestjs/core';
-import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AppModule } from './app.module';
 import { Env } from './config/env';
-import { PrismaExceptionFilter } from './common/filters/prisma-exception.filter';
+import { configureApp } from './common/configure-app';
 
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule);
@@ -13,15 +12,7 @@ async function bootstrap(): Promise<void> {
     origin: config.get('CORS_ORIGIN', { infer: true }),
     credentials: false,
   });
-  app.useGlobalPipes(
-    new ValidationPipe({
-      whitelist: true,
-      forbidNonWhitelisted: true,
-      transform: true,
-      transformOptions: { enableImplicitConversion: true },
-    }),
-  );
-  app.useGlobalFilters(new PrismaExceptionFilter());
+  configureApp(app);
 
   await app.listen(config.get('PORT', { infer: true }));
 }
