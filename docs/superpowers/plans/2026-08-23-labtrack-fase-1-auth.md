@@ -1147,8 +1147,8 @@ export class AuthService {
   async login(dto: LoginDto): Promise<LoginResponse> {
     const user = await this.prisma.user.findUnique({ where: { username: dto.username } });
 
-    // Se verifica el estado y la contraseña con el mismo error para no revelar
-    // si el usuario existe ni si está desactivado.
+    // Same exception for a missing user, a wrong password and a deactivated
+    // account, so login never reveals which check failed.
     if (!user || !user.active) {
       throw new UnauthorizedException('Invalid credentials');
     }
@@ -1362,8 +1362,8 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     });
   }
 
-  // Se relee el usuario en cada petición: desactivar a alguien lo expulsa de
-  // inmediato en lugar de esperar a que expire su token.
+  // The user is re-read on every request: deactivating someone locks them out
+  // immediately instead of waiting for their token to expire.
   async validate(payload: JwtPayload): Promise<AuthenticatedUser> {
     const user = await this.prisma.user.findUnique({
       where: { id: payload.sub },
@@ -1968,8 +1968,8 @@ export class UsersService {
       ];
     }
 
-    // El conteo y la página salen de la misma transacción para que el total
-    // siempre corresponda a los datos mostrados.
+    // The count and the page come from the same transaction, so the total
+    // always corresponds to the rows being shown.
     const [data, total] = await this.prisma.$transaction([
       this.prisma.user.findMany({
         where,
@@ -2971,8 +2971,8 @@ export class UsersStore {
     this.reload();
   }
 
-  // Cambiar la búsqueda vuelve a la primera página: mantener la página actual
-  // dejaría al usuario mirando una página vacía de un resultado más pequeño.
+  // Changing the search resets to the first page: keeping the current page
+  // would leave the user staring at an empty page of a smaller result set.
   setSearch(search: string): void {
     this.state.update((current) => ({ ...current, search, page: 1 }));
     this.reload();
@@ -3367,7 +3367,7 @@ export class UsersComponent implements OnInit {
   readonly searchControl = new FormControl('', { nonNullable: true });
 
   constructor() {
-    // El retardo evita una petición por tecla mientras se escribe.
+    // The debounce avoids one request per keystroke while typing.
     this.searchControl.valueChanges
       .pipe(debounceTime(300), distinctUntilChanged(), takeUntilDestroyed())
       .subscribe((term) => this.store.setSearch(term));
