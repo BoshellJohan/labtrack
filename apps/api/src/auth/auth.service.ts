@@ -17,8 +17,8 @@ export class AuthService {
   async login(dto: LoginDto): Promise<LoginResponse> {
     const user = await this.prisma.user.findUnique({ where: { username: dto.username } });
 
-    // Se verifica el estado y la contraseña con el mismo error para no revelar
-    // si el usuario existe ni si está desactivado.
+    // Same exception for a missing user, a wrong password and a deactivated
+    // account, so login never reveals which check failed.
     if (!user || !user.active) {
       throw new UnauthorizedException('Invalid credentials');
     }
