@@ -1,10 +1,11 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { LoginResponse } from '@labtrack/shared';
+import { LoginResponse, UserDto } from '@labtrack/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { toUserDto } from '../common/mappers/user.mapper';
 import { PasswordService } from './password.service';
 import { LoginDto } from './dto/login.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
 
 @Injectable()
 export class AuthService {
@@ -33,5 +34,25 @@ export class AuthService {
     });
 
     return { accessToken, user: toUserDto(user) };
+  }
+
+  async changePassword(userId: string, dto: ChangePasswordDto): Promise<void> {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user || !(await this.passwords.verify(dto.currentPassword, user.passwordHash))) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        passwordHash: await this.passwords.hash(dto.newPassword),
+        mustChangePassword: false,
+      },
+    });
+  }
+
+  async findProfile(userId: string): Promise<UserDto> {
+    const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
+    return toUserDto(user);
   }
 }
