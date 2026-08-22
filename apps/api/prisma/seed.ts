@@ -11,7 +11,9 @@ export async function seedAdmin(
   prisma: PrismaClient,
   env: { username: string; password: string },
 ): Promise<void> {
-  const existing = await prisma.user.findUnique({ where: { username: env.username } });
+  const existing = await prisma.user.findUnique({
+    where: { username: env.username },
+  });
   if (existing) {
     return;
   }
@@ -32,7 +34,9 @@ async function main(): Promise<void> {
   const password = process.env.SEED_ADMIN_PASSWORD;
 
   if (!username || !password) {
-    throw new Error('SEED_ADMIN_USERNAME and SEED_ADMIN_PASSWORD are required to seed');
+    throw new Error(
+      'SEED_ADMIN_USERNAME and SEED_ADMIN_PASSWORD are required to seed',
+    );
   }
 
   const prisma = new PrismaClient();
