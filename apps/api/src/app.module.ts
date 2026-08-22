@@ -5,6 +5,7 @@ import { parseEnv } from './config/env';
 import { HealthController } from './health/health.controller';
 import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './auth/auth.module';
+import { UsersModule } from './users/users.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
 import { PasswordChangeGuard } from './common/guards/password-change.guard';
@@ -14,6 +15,7 @@ import { PasswordChangeGuard } from './common/guards/password-change.guard';
     ConfigModule.forRoot({ isGlobal: true, validate: parseEnv }),
     PrismaModule,
     AuthModule,
+    UsersModule,
   ],
   controllers: [HealthController],
   providers: [

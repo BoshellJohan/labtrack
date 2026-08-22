@@ -83,9 +83,7 @@ describe('Auth (e2e)', () => {
       .expect(401);
   });
 
-  // Unskipped in Task 8, once GET /users exists. Until then it would fail
-  // with 404 instead of the 403 this test is meant to verify.
-  it.skip('blocks other endpoints while the user must change the password', async () => {
+  it('blocks other endpoints while the user must change the password', async () => {
     await prisma.user.update({ where: { username: 'ana' }, data: { mustChangePassword: true } });
     const { body } = await login('ana', 'initial-password');
 
