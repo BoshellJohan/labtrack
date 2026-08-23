@@ -6,7 +6,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
-import { MatPaginatorModule, PageEvent } from '@angular/material/paginator';
+import { MatPaginatorIntl, MatPaginatorModule, PageEvent } from '@angular/material/paginator';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatTableModule } from '@angular/material/table';
@@ -16,6 +16,7 @@ import { UsersStore } from './users.store';
 import { UserFormDialog } from './user-form.dialog';
 import { USERS_ES } from './i18n.es';
 import { COMMON_ES } from '../../shared/i18n/es';
+import { createSpanishPaginatorIntl } from '../../shared/i18n/spanish-paginator-intl';
 
 @Component({
   selector: 'lt-users',
@@ -31,6 +32,11 @@ import { COMMON_ES } from '../../shared/i18n/es';
     MatDialogModule,
     MatProgressBarModule,
   ],
+  // Scoped here rather than app-wide: <mat-paginator> only appears in this
+  // component's view today, and MatPaginatorModule is already part of this
+  // lazy chunk, so this costs nothing in the eager bundle. Promote it to
+  // app.config.ts if a second paginator ever needs the same labels.
+  providers: [{ provide: MatPaginatorIntl, useFactory: createSpanishPaginatorIntl }],
   template: `
     <section class="page">
       <header>
