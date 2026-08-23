@@ -19,10 +19,15 @@ export class UsersStore {
   private readonly usersSignal = signal<UserDto[]>([]);
   private readonly totalSignal = signal(0);
   private readonly loadingSignal = signal(false);
+  private readonly errorSignal = signal(false);
 
   readonly users = this.usersSignal.asReadonly();
   readonly total = this.totalSignal.asReadonly();
   readonly loading = this.loadingSignal.asReadonly();
+  // Set when the last `reload()` failed (network error, 403, 5xx — a 401 is
+  // already handled globally by authInterceptor). The component renders this
+  // so a failed load is never silently invisible to the user.
+  readonly error = this.errorSignal.asReadonly();
   readonly page = computed(() => this.state().page);
   readonly pageSize = computed(() => this.state().pageSize);
   readonly search = computed(() => this.state().search);
@@ -47,12 +52,16 @@ export class UsersStore {
     }
 
     this.loadingSignal.set(true);
+    this.errorSignal.set(false);
     this.http
       .get<PaginatedResponse<UserDto>>(`${this.apiUrl}/users`, { params })
       .pipe(finalize(() => this.loadingSignal.set(false)))
-      .subscribe((response) => {
-        this.usersSignal.set(response.data);
-        this.totalSignal.set(response.total);
+      .subscribe({
+        next: (response) => {
+          this.usersSignal.set(response.data);
+          this.totalSignal.set(response.total);
+        },
+        error: () => this.errorSignal.set(true),
       });
   }
 

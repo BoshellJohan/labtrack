@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, OnInit, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, OnInit, effect, inject } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { HttpErrorResponse } from '@angular/common/http';
 import { FormControl, ReactiveFormsModule } from '@angular/forms';
@@ -120,6 +120,17 @@ export class UsersComponent implements OnInit {
     this.searchControl.valueChanges
       .pipe(debounceTime(300), distinctUntilChanged(), takeUntilDestroyed())
       .subscribe((term) => this.store.setSearch(term));
+
+    // reload() is called internally by the store (ngOnInit, setPage,
+    // setSearch) rather than returned as an Observable, so a failed load is
+    // surfaced through this signal instead of a subscribe-time error
+    // callback — kept consistent with create()/deactivate() by reusing the
+    // same snackbar treatment.
+    effect(() => {
+      if (this.store.error()) {
+        this.snackBar.open(COMMON_ES.unexpectedError, COMMON_ES.accept, { duration: 5000 });
+      }
+    });
   }
 
   ngOnInit(): void {

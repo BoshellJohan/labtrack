@@ -70,4 +70,27 @@ describe('UsersStore', () => {
 
     expect(store.users()).toHaveLength(1);
   });
+
+  it('surfaces a failed load instead of failing silently', () => {
+    store.reload();
+    http
+      .expectOne((req) => req.url === 'http://api.test/users')
+      .flush({ message: 'boom' }, { status: 500, statusText: 'Server Error' });
+
+    expect(store.error()).toBe(true);
+    expect(store.loading()).toBe(false);
+  });
+
+  it('clears the previous error once a reload succeeds', () => {
+    store.reload();
+    http
+      .expectOne((req) => req.url === 'http://api.test/users')
+      .flush({ message: 'boom' }, { status: 500, statusText: 'Server Error' });
+    expect(store.error()).toBe(true);
+
+    store.reload();
+    http.expectOne((req) => req.url === 'http://api.test/users').flush(page);
+
+    expect(store.error()).toBe(false);
+  });
 });
