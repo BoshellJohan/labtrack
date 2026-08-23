@@ -1,4 +1,4 @@
-import { UnauthorizedException } from '@nestjs/common';
+import { HttpStatus, UnauthorizedException } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { PasswordService } from './password.service';
 
@@ -73,5 +73,35 @@ describe('AuthService.login', () => {
     await expect(service.login({ username: 'ana', password: 'right' })).rejects.toBeInstanceOf(
       UnauthorizedException,
     );
+  });
+});
+
+describe('AuthService.changePassword', () => {
+  it('rejects a wrong current password with a coded bad request, not a 401', async () => {
+    const { service } = buildService({ user: activeUser, passwordMatches: false });
+
+    await expect(
+      service.changePassword('user-1', {
+        currentPassword: 'wrong',
+        newPassword: 'a-brand-new-password',
+      }),
+    ).rejects.toMatchObject({
+      status: HttpStatus.BAD_REQUEST,
+      response: { statusCode: HttpStatus.BAD_REQUEST, code: 'INVALID_CURRENT_PASSWORD' },
+    });
+  });
+
+  it('stores the new hash and clears mustChangePassword', async () => {
+    const { service, prisma } = buildService({ user: activeUser, passwordMatches: true });
+
+    await service.changePassword('user-1', {
+      currentPassword: 'initial-password',
+      newPassword: 'a-brand-new-password',
+    });
+
+    expect(prisma.user.update).toHaveBeenCalledWith({
+      where: { id: 'user-1' },
+      data: { passwordHash: 'new-hash', mustChangePassword: false },
+    });
   });
 });
