@@ -5,6 +5,8 @@ export const COMMON_ES = {
   accept: 'Aceptar',
   requiredField: 'Este campo es obligatorio',
   unexpectedError: 'Ocurrió un error inesperado. Intenta de nuevo.',
+  usersLink: 'Usuarios',
+  logout: 'Cerrar sesión',
 } as const;
 
 export const LOGIN_ES = {
