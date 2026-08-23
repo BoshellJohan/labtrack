@@ -1,15 +1,8 @@
 import { inject } from '@angular/core';
-import { Router } from '@angular/router';
+import { CanActivateFn, Router } from '@angular/router';
 import { AuthService } from './auth.service';
 
-// Not annotated as `CanActivateFn`: that type requires two positional
-// parameters (route, state) that these guards never use. Leaving the
-// implementation's own (zero-parameter) signature to be inferred keeps the
-// guards callable with no arguments in tests while remaining structurally
-// assignable to `Route.canActivate` (TypeScript permits a function with
-// fewer parameters than the target type wherever a `CanActivateFn` is
-// expected).
-export const authGuard = () => {
+export const authGuard: CanActivateFn = () => {
   const auth = inject(AuthService);
   const router = inject(Router);
 
@@ -22,7 +15,7 @@ export const authGuard = () => {
   return true;
 };
 
-export const adminGuard = () => {
+export const adminGuard: CanActivateFn = () => {
   const auth = inject(AuthService);
   const router = inject(Router);
   return auth.isAdmin() ? true : router.createUrlTree(['/reactivos']);
