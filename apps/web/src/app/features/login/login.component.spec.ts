@@ -53,7 +53,7 @@ describe('LoginComponent', () => {
     expect(component.loading()).toBe(false);
   });
 
-  it('navigates to /reactivos when the logged-in user does not need to change their password', () => {
+  it('navigates to the home page when the logged-in user does not need to change their password', () => {
     login.mockReturnValue(
       of({ accessToken: 'token-123', user: { ...userDto, mustChangePassword: false } }),
     );
@@ -61,7 +61,7 @@ describe('LoginComponent', () => {
 
     component.submit();
 
-    expect(navigate).toHaveBeenCalledWith(['/reactivos']);
+    expect(navigate).toHaveBeenCalledWith(['/']);
     expect(component.loading()).toBe(false);
   });
 

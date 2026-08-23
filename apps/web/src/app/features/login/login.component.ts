@@ -72,7 +72,7 @@ export class LoginComponent {
     this.auth.login(this.form.getRawValue()).subscribe({
       next: (response) => {
         this.loading.set(false);
-        const destination = response.user.mustChangePassword ? '/cambiar-contrasena' : '/reactivos';
+        const destination = response.user.mustChangePassword ? '/cambiar-contrasena' : '/';
         void this.router.navigate([destination]);
       },
       error: () => {

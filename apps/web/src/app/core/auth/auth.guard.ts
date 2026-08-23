@@ -18,5 +18,5 @@ export const authGuard: CanActivateFn = () => {
 export const adminGuard: CanActivateFn = () => {
   const auth = inject(AuthService);
   const router = inject(Router);
-  return auth.isAdmin() ? true : router.createUrlTree(['/reactivos']);
+  return auth.isAdmin() ? true : router.createUrlTree(['/']);
 };

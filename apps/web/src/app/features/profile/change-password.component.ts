@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { HttpErrorResponse } from '@angular/common/http';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
@@ -8,6 +9,7 @@ import { MatInputModule } from '@angular/material/input';
 import { AuthService } from '../../core/auth/auth.service';
 import { ProfileService } from './profile.service';
 import { CHANGE_PASSWORD_ES } from './i18n.es';
+import { COMMON_ES } from '../../shared/i18n/es';
 
 @Component({
   selector: 'lt-change-password',
@@ -84,9 +86,14 @@ export class ChangePasswordComponent {
         if (user) {
           this.auth.setUser({ ...user, mustChangePassword: false });
         }
-        void this.router.navigate(['/reactivos']);
+        void this.router.navigate(['/']);
       },
-      error: () => this.errorMessage.set(this.text.wrongCurrent),
+      error: (error: HttpErrorResponse) =>
+        this.errorMessage.set(
+          error.error?.code === 'INVALID_CURRENT_PASSWORD'
+            ? this.text.wrongCurrent
+            : COMMON_ES.unexpectedError,
+        ),
     });
   }
 }

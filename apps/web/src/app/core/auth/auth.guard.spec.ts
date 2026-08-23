@@ -51,8 +51,6 @@ describe('adminGuard', () => {
 
   it('redirects a non-admin to the home page', () => {
     setup({ role: 'USER' }, 'token-123');
-    expect(TestBed.runInInjectionContext(() => adminGuard(dummyRoute, dummyState))).toBe(
-      '/reactivos',
-    );
+    expect(TestBed.runInInjectionContext(() => adminGuard(dummyRoute, dummyState))).toBe('/');
   });
 });
