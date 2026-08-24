@@ -1,4 +1,19 @@
 {
   "extends": "./tsconfig.json",
-  "exclude": ["node_modules", "test", "dist", "**/*spec.ts"]
+  "compilerOptions": {
+    // Pinned so the emitted layout cannot drift. Without it TypeScript infers
+    // the common root from whatever files happen to be compiled: prisma/seed.ts
+    // sits outside src, which silently pushed the entry point to
+    // dist/src/main.js and broke `node dist/main` in production. With rootDir
+    // set, a file outside src fails the build loudly instead.
+    "rootDir": "src"
+  },
+  "exclude": [
+    "node_modules",
+    "test",
+    "dist",
+    "**/*spec.ts",
+    "prisma",
+    "prisma.config.ts"
+  ]
 }
