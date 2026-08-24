@@ -56,8 +56,39 @@ export class UsersService {
     return toUserDto(user);
   }
 
-  async update(id: string, dto: UpdateUserDto): Promise<UserDto> {
-    const user = await this.prisma.user.update({ where: { id }, data: { ...dto } });
+  async update(id: string, dto: UpdateUserDto, actorId: string): Promise<UserDto> {
+    if (dto.role === 'USER' && id === actorId) {
+      throw new BadRequestException('You cannot remove your own administrator role');
+    }
+
+    // The last-admin check and the write share one serializable transaction:
+    // under a weaker isolation level two administrators demoting each other at
+    // the same time would both read a count of two and both succeed, leaving
+    // the system with no administrator and no way to create one.
+    const user = await this.prisma.$transaction(
+      async (tx) => {
+        if (dto.role === 'USER') {
+          const target = await tx.user.findUnique({ where: { id } });
+          if (target?.role === 'ADMIN' && target.active) {
+            const activeAdmins = await tx.user.count({
+              where: { role: 'ADMIN', active: true },
+            });
+            if (activeAdmins <= 1) {
+              throw new BadRequestException('The last active administrator cannot be demoted');
+            }
+          }
+        }
+
+        // The writable fields are named one by one rather than spread from the
+        // DTO, so the "only these two are writable" rule is visible here.
+        return tx.user.update({
+          where: { id },
+          data: { fullName: dto.fullName, role: dto.role },
+        });
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    );
+
     return toUserDto(user);
   }
 

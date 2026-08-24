@@ -87,6 +87,77 @@ describe('Users (e2e)', () => {
       .expect(400);
   });
 
+  it('renames a user through PATCH /users/:id', async () => {
+    const target = await prisma.user.findUniqueOrThrow({ where: { username: 'ana' } });
+
+    const response = await request(app.getHttpServer())
+      .patch(`/users/${target.id}`)
+      .set('Authorization', `Bearer ${await tokenFor('admin')}`)
+      .send({ fullName: 'Ana Maria Ruiz' })
+      .expect(200);
+
+    expect(response.body.fullName).toBe('Ana Maria Ruiz');
+    expect(response.body.username).toBe('ana');
+    expect(response.body.passwordHash).toBeUndefined();
+  });
+
+  it('refuses to let an admin demote their own account even with peers left', async () => {
+    await prisma.user.create({
+      data: {
+        username: 'admin2',
+        fullName: 'Admin Two',
+        passwordHash: await passwords.hash('initial-password'),
+        role: 'ADMIN',
+        mustChangePassword: false,
+      },
+    });
+    const actor = await prisma.user.findUniqueOrThrow({ where: { username: 'admin' } });
+
+    await request(app.getHttpServer())
+      .patch(`/users/${actor.id}`)
+      .set('Authorization', `Bearer ${await tokenFor('admin')}`)
+      .send({ role: 'USER' })
+      .expect(400);
+
+    const stored = await prisma.user.findUniqueOrThrow({ where: { id: actor.id } });
+    expect(stored.role).toBe('ADMIN');
+  });
+
+  it('refuses to demote the only remaining administrator', async () => {
+    // The seed-shaped fixture has a single ADMIN, so this request is both a
+    // self-demotion and a last-admin demotion; either guard must refuse it.
+    const actor = await prisma.user.findUniqueOrThrow({ where: { username: 'admin' } });
+
+    await request(app.getHttpServer())
+      .patch(`/users/${actor.id}`)
+      .set('Authorization', `Bearer ${await tokenFor('admin')}`)
+      .send({ role: 'USER' })
+      .expect(400);
+
+    expect(await prisma.user.count({ where: { role: 'ADMIN', active: true } })).toBe(1);
+  });
+
+  it('lets an admin demote a peer while another administrator remains', async () => {
+    const other = await prisma.user.create({
+      data: {
+        username: 'admin2',
+        fullName: 'Admin Two',
+        passwordHash: await passwords.hash('initial-password'),
+        role: 'ADMIN',
+        mustChangePassword: false,
+      },
+    });
+
+    await request(app.getHttpServer())
+      .patch(`/users/${other.id}`)
+      .set('Authorization', `Bearer ${await tokenFor('admin')}`)
+      .send({ role: 'USER' })
+      .expect(200);
+
+    const stored = await prisma.user.findUniqueOrThrow({ where: { id: other.id } });
+    expect(stored.role).toBe('USER');
+  });
+
   it('deactivates a user without deleting the row', async () => {
     const target = await prisma.user.findUniqueOrThrow({ where: { username: 'ana' } });
 

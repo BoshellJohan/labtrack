@@ -30,8 +30,9 @@ export class UsersController {
   update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateUserDto,
+    @CurrentUser() actor: AuthenticatedUser,
   ): Promise<UserDto> {
-    return this.users.update(id, dto);
+    return this.users.update(id, dto, actor.id);
   }
 
   @Patch(':id/deactivate')
