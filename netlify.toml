@@ -1,0 +1,20 @@
+[build]
+  # write-production-env.mjs turns the API_URL environment variable into
+  # environment.production.ts, which angular.json swaps in for the production
+  # build. It exits non-zero when API_URL is unset, so a misconfigured site
+  # fails the build instead of shipping a client pointed at the wrong host.
+  command = "npm ci && npm run config:api-url -w apps/web && npm run build -w apps/web"
+  publish = "apps/web/dist/web/browser"
+
+[build.environment]
+  NODE_VERSION = "20"
+
+# The client owns its routing, so every path must be served index.html. Without
+# this, reloading /usuarios asks Netlify for a file that does not exist and
+# returns 404. Kept in sync with apps/web/public/_redirects, which Angular copies
+# into the bundle; either alone is sufficient, both together survive a change to
+# how assets are emitted.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
