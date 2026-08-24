@@ -1,6 +1,10 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
-import { PaginatedResponse, UserDto, buildPaginatedResponse } from '@labtrack/shared';
+import { Prisma } from '../prisma/client';
+import {
+  PaginatedResponse,
+  UserDto,
+  buildPaginatedResponse,
+} from '@labtrack/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { PasswordService } from '../auth/password.service';
 import { toUserDto } from '../common/mappers/user.mapper';
@@ -39,7 +43,12 @@ export class UsersService {
       this.prisma.user.count({ where }),
     ]);
 
-    return buildPaginatedResponse(data.map(toUserDto), total, query.page, query.pageSize);
+    return buildPaginatedResponse(
+      data.map(toUserDto),
+      total,
+      query.page,
+      query.pageSize,
+    );
   }
 
   async create(dto: CreateUserDto, actorId: string): Promise<UserDto> {
@@ -56,9 +65,15 @@ export class UsersService {
     return toUserDto(user);
   }
 
-  async update(id: string, dto: UpdateUserDto, actorId: string): Promise<UserDto> {
+  async update(
+    id: string,
+    dto: UpdateUserDto,
+    actorId: string,
+  ): Promise<UserDto> {
     if (dto.role === 'USER' && id === actorId) {
-      throw new BadRequestException('You cannot remove your own administrator role');
+      throw new BadRequestException(
+        'You cannot remove your own administrator role',
+      );
     }
 
     // The last-admin check and the write share one serializable transaction:
@@ -74,7 +89,9 @@ export class UsersService {
               where: { role: 'ADMIN', active: true },
             });
             if (activeAdmins <= 1) {
-              throw new BadRequestException('The last active administrator cannot be demoted');
+              throw new BadRequestException(
+                'The last active administrator cannot be demoted',
+              );
             }
           }
         }
@@ -96,7 +113,10 @@ export class UsersService {
     if (id === actorId) {
       throw new BadRequestException('You cannot deactivate your own account');
     }
-    const user = await this.prisma.user.update({ where: { id }, data: { active: false } });
+    const user = await this.prisma.user.update({
+      where: { id },
+      data: { active: false },
+    });
     return toUserDto(user);
   }
 }

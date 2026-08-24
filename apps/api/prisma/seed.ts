@@ -1,4 +1,5 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaPg } from '@prisma/adapter-pg';
+import { PrismaClient } from '../src/generated/prisma/client';
 import * as bcrypt from 'bcrypt';
 
 // This script runs standalone via `prisma db seed` (ts-node), outside the
@@ -39,7 +40,16 @@ async function main(): Promise<void> {
     );
   }
 
-  const prisma = new PrismaClient();
+  const connectionString = process.env.DATABASE_URL;
+
+  if (!connectionString) {
+    throw new Error('DATABASE_URL is required to seed');
+  }
+
+  // Prisma 7 connects through a driver adapter, so the seed builds its own
+  // rather than sharing the application's PrismaService — this script runs
+  // outside the Nest container on purpose.
+  const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString }) });
   try {
     await seedAdmin(prisma, { username, password });
   } finally {

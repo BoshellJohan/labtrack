@@ -1,8 +1,13 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaPg } from '@prisma/adapter-pg';
+import { PrismaClient } from '../src/prisma/client';
 import { seedAdmin } from '../prisma/seed';
 
 describe('seedAdmin', () => {
-  const prisma = new PrismaClient();
+  // Prisma 7 requires a driver adapter. This suite builds its own client rather
+  // than going through createTestApp, because it exercises the standalone seed.
+  const prisma = new PrismaClient({
+    adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }),
+  });
 
   beforeEach(async () => {
     await prisma.$executeRawUnsafe(
