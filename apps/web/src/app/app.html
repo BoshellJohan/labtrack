@@ -1,0 +1,12 @@
+@if (auth.isAuthenticated()) {
+  <mat-toolbar color="primary">
+    <span class="brand">{{ common.appName }}</span>
+    @if (auth.isAdmin()) {
+      <a mat-button routerLink="/usuarios">{{ common.usersLink }}</a>
+    }
+    <span class="spacer"></span>
+    <span class="user">{{ auth.currentUser()?.fullName }}</span>
+    <button mat-button (click)="logout()">{{ common.logout }}</button>
+  </mat-toolbar>
+}
+<router-outlet />

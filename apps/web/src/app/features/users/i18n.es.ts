@@ -1,0 +1,25 @@
+export const USERS_ES = {
+  title: 'Usuarios',
+  searchPlaceholder: 'Buscar por usuario o nombre',
+  newUser: 'Nuevo usuario',
+  columns: {
+    username: 'Usuario',
+    fullName: 'Nombre completo',
+    role: 'Rol',
+    status: 'Estado',
+    actions: 'Acciones',
+  },
+  roles: { ADMIN: 'Administrador', USER: 'Usuario' },
+  status: { active: 'Activo', inactive: 'Inactivo' },
+  deactivate: 'Desactivar',
+  confirmDeactivate: '¿Desactivar a este usuario? Podrá consultarse, pero no iniciará sesión.',
+  form: {
+    username: 'Usuario',
+    fullName: 'Nombre completo',
+    password: 'Contraseña inicial',
+    role: 'Rol',
+    passwordHint: 'El usuario deberá cambiarla al iniciar sesión.',
+    usernameTaken: 'Ese nombre de usuario ya existe',
+  },
+  emptyState: 'No hay usuarios que coincidan con la búsqueda.',
+} as const;

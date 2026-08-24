@@ -1,0 +1,17 @@
+{
+  "name": "labtrack",
+  "private": true,
+  "workspaces": ["packages/*", "apps/*"],
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "build:shared": "npm run build -w packages/shared",
+    "test": "npm run test -w packages/shared && npm run test -w apps/api && npm run test -w apps/web -- --watch=false"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.2.0",
+    "@types/jest": "^29.5.0",
+    "@types/node": "^20.14.0"
+  }
+}
