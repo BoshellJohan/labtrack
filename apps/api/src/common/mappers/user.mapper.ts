@@ -1,4 +1,4 @@
-import { User } from '@prisma/client';
+import { User } from '../../prisma/client';
 import { UserDto } from '@labtrack/shared';
 
 export function toUserDto(user: User): UserDto {

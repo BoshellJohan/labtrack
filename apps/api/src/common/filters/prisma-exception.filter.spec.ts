@@ -1,5 +1,5 @@
 import { ArgumentsHost, HttpStatus } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { Prisma } from '../../prisma/client';
 import { PrismaExceptionFilter } from './prisma-exception.filter';
 
 function hostWith(json: jest.Mock, status: jest.Mock): ArgumentsHost {

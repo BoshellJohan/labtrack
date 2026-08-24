@@ -7,7 +7,7 @@
   publish = "apps/web/dist/web/browser"
 
 [build.environment]
-  NODE_VERSION = "20"
+  NODE_VERSION = "24"
 
 # The client owns its routing, so every path must be served index.html. Without
 # this, reloading /usuarios asks Netlify for a file that does not exist and

@@ -5,3 +5,6 @@ dist/
 *.log
 .angular/
 coverage/
+
+# Prisma 7 generates the client here; postinstall regenerates it on every install.
+apps/api/src/generated/
