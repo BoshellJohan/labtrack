@@ -63,6 +63,20 @@ describe('UsersStore', () => {
     request.flush(page);
   });
 
+  it('sends the new page size and resets to the first page', () => {
+    store.setPage(3);
+    http.expectOne((req) => req.params.get('page') === '3').flush(page);
+
+    store.setPageSize(50);
+    const request = http.expectOne((req) => req.url === 'http://api.test/users');
+    expect(request.request.params.get('pageSize')).toBe('50');
+    expect(request.request.params.get('page')).toBe('1');
+    request.flush(page);
+
+    expect(store.pageSize()).toBe(50);
+    expect(store.page()).toBe(1);
+  });
+
   it('reloads the list after deactivating a user', () => {
     store.deactivate('user-1').subscribe();
     http.expectOne('http://api.test/users/user-1/deactivate').flush({});

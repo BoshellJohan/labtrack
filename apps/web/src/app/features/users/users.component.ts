@@ -144,6 +144,12 @@ export class UsersComponent implements OnInit {
   }
 
   onPage(event: PageEvent): void {
+    // A page-size change also carries a pageIndex, but setPageSize resets to
+    // the first page, so only one of the two is applied per event.
+    if (event.pageSize !== this.store.pageSize()) {
+      this.store.setPageSize(event.pageSize);
+      return;
+    }
     this.store.setPage(event.pageIndex + 1);
   }
 

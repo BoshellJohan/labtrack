@@ -44,6 +44,13 @@ export class UsersStore {
     this.reload();
   }
 
+  // Changing the page size resets to the first page for the same reason as
+  // setSearch: the current page index may not exist under the new size.
+  setPageSize(pageSize: number): void {
+    this.state.update((current) => ({ ...current, pageSize, page: 1 }));
+    this.reload();
+  }
+
   reload(): void {
     const { page, pageSize, search } = this.state();
     let params = new HttpParams().set('page', page).set('pageSize', pageSize);
