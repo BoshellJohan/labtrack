@@ -86,7 +86,7 @@ export class UsersService {
           data: { fullName: dto.fullName, role: dto.role },
         });
       },
-      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+      { isolationLevel: 'Serializable' },
     );
 
     return toUserDto(user);
