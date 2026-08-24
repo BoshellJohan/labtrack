@@ -8,3 +8,6 @@ coverage/
 
 # Prisma 7 generates the client here; postinstall regenerates it on every install.
 apps/api/src/generated/
+
+# Stale incremental caches make tsc skip emitting, producing an empty dist.
+*.tsbuildinfo
