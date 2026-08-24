@@ -19,16 +19,27 @@ if (!apiUrl) {
   process.exit(1);
 }
 
+// CI providers mask environment values in their logs, so echoing the offending
+// value prints '****' and tells the reader nothing. These messages describe what
+// a correct value looks like instead.
 let parsed;
 try {
   parsed = new URL(apiUrl);
 } catch {
-  console.error(`API_URL is not a valid URL: ${apiUrl}`);
+  console.error(
+    [
+      'API_URL is not a valid URL.',
+      'It must include the scheme, for example https://labtrack-api.up.railway.app',
+      'A bare host such as labtrack-api.up.railway.app is the usual cause.',
+    ].join('\n'),
+  );
   process.exit(1);
 }
 
 if (parsed.protocol !== 'https:' && parsed.hostname !== 'localhost') {
-  console.error(`API_URL must use https outside localhost, got: ${apiUrl}`);
+  console.error(
+    `API_URL must use https outside localhost, but its scheme is '${parsed.protocol}'.`,
+  );
   process.exit(1);
 }
 
