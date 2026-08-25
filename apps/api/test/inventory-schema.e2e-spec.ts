@@ -64,13 +64,17 @@ describe('Inventory schema (e2e)', () => {
 
   it('stores quantities without binary rounding error', async () => {
     const batch = await makeBatch('L-1');
-    const stored = await prisma.reagentBatch.findUniqueOrThrow({
+    await prisma.reagentBatch.update({
       where: { id: batch.id },
+      data: { currentStock: '0.1000' },
     });
-    // 0.1 + 0.2 is the classic float trap; Decimal must keep it exact.
+    // 0.1 + 0.2 is the classic float trap: a double column would store
+    // 0.30000000000000004. Let the database perform the addition via
+    // Prisma's `increment`, so a Decimal(12,4) column is required to land
+    // on exactly 0.3.
     const updated = await prisma.reagentBatch.update({
-      where: { id: stored.id },
-      data: { currentStock: '0.3000' },
+      where: { id: batch.id },
+      data: { currentStock: { increment: '0.2' } },
     });
     expect(updated.currentStock.toString()).toBe('0.3');
   });
