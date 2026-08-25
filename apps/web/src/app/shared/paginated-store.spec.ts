@@ -111,4 +111,34 @@ describe('PaginatedStore', () => {
 
     expect(store.error()).toBe(false);
   });
+
+  it('discards a stale response when a newer reload has already started', () => {
+    store.setFilters({ name: 'first' });
+    const firstRequest = http.expectOne((req) => req.params.get('name') === 'first');
+
+    store.setFilters({ name: 'second' });
+    const secondRequest = http.expectOne((req) => req.params.get('name') === 'second');
+
+    // Starting the second reload must cancel the first's still-open request:
+    // that is what stops a slow first response from ever landing.
+    expect(firstRequest.cancelled).toBe(true);
+
+    const secondPage = {
+      data: [{ id: 'thing-2' }],
+      total: 1,
+      page: 1,
+      pageSize: 20,
+      totalPages: 1,
+    };
+
+    // Answer the newer request; a cancelled request can never be flushed
+    // (Angular's testing harness rejects it), which is itself proof the
+    // stale one can no longer overwrite `items`.
+    secondRequest.flush(secondPage);
+
+    expect(store.items()).toEqual([{ id: 'thing-2' }]);
+    expect(store.total()).toBe(1);
+    expect(store.loading()).toBe(false);
+    expect(store.error()).toBe(false);
+  });
 });
