@@ -7,6 +7,7 @@
   "rootDir": ".",
   "testEnvironment": "node",
   "testRegex": ".e2e-spec.ts$",
+  "globalSetup": "<rootDir>/utils/global-setup.ts",
   "transform": {
     "^.+\\.(t|j)s$": "ts-jest"
   },
