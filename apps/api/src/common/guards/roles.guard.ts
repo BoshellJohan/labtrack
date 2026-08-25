@@ -7,7 +7,7 @@ import {
 import { Reflector } from '@nestjs/core';
 import { Role } from '../../prisma/client';
 import { ROLES_KEY } from '../decorators/roles.decorator';
-import { AuthenticatedUser } from '../decorators/current-user.decorator';
+import { RequestWithUser } from '../types/request-with-user';
 
 @Injectable()
 export class RolesGuard implements CanActivate {
@@ -22,9 +22,7 @@ export class RolesGuard implements CanActivate {
       return true;
     }
 
-    const user: AuthenticatedUser | undefined = context
-      .switchToHttp()
-      .getRequest().user;
+    const user = context.switchToHttp().getRequest<RequestWithUser>().user;
     if (!user || !required.includes(user.role)) {
       throw new ForbiddenException('Insufficient role');
     }

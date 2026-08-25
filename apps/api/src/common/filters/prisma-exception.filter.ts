@@ -5,6 +5,7 @@ import {
   HttpStatus,
   Logger,
 } from '@nestjs/common';
+import { Response } from 'express';
 import { Prisma } from '../../prisma/client';
 
 @Catch(Prisma.PrismaClientKnownRequestError)
@@ -15,7 +16,7 @@ export class PrismaExceptionFilter implements ExceptionFilter {
     exception: Prisma.PrismaClientKnownRequestError,
     host: ArgumentsHost,
   ): void {
-    const response = host.switchToHttp().getResponse();
+    const response = host.switchToHttp().getResponse<Response>();
     this.logger.warn(`Prisma error ${exception.code}: ${exception.message}`);
 
     switch (exception.code) {

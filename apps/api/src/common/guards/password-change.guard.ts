@@ -1,13 +1,18 @@
-import { CanActivate, ExecutionContext, ForbiddenException, Injectable } from '@nestjs/common';
-import { AuthenticatedUser } from '../decorators/current-user.decorator';
+import {
+  CanActivate,
+  ExecutionContext,
+  ForbiddenException,
+  Injectable,
+} from '@nestjs/common';
+import { RequestWithUser } from '../types/request-with-user';
 
 const ALLOWED_PATHS = ['/auth/me', '/auth/password'];
 
 @Injectable()
 export class PasswordChangeGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
-    const request = context.switchToHttp().getRequest();
-    const user: AuthenticatedUser | undefined = request.user;
+    const request = context.switchToHttp().getRequest<RequestWithUser>();
+    const user = request.user;
 
     if (!user?.mustChangePassword) {
       return true;
