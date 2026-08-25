@@ -1,86 +1,32 @@
-import { Injectable, computed, inject, signal } from '@angular/core';
-import { HttpClient, HttpParams } from '@angular/common/http';
-import { Observable, finalize, tap } from 'rxjs';
-import { CreateUserRequest, PaginatedResponse, UserDto } from '@labtrack/shared';
-import { API_URL } from '../../core/api/api.config';
+import { Injectable, computed } from '@angular/core';
+import { Observable, tap } from 'rxjs';
+import { CreateUserRequest, UserDto } from '@labtrack/shared';
+import { PaginatedStore } from '../../shared/paginated-store';
 
-interface UsersState {
-  page: number;
-  pageSize: number;
-  search: string;
+interface UsersFilters {
+  search?: string;
 }
 
 @Injectable({ providedIn: 'root' })
-export class UsersStore {
-  private readonly http = inject(HttpClient);
-  private readonly apiUrl = inject(API_URL);
+export class UsersStore extends PaginatedStore<UserDto, UsersFilters> {
+  protected readonly path = '/users';
 
-  private readonly state = signal<UsersState>({ page: 1, pageSize: 20, search: '' });
-  private readonly usersSignal = signal<UserDto[]>([]);
-  private readonly totalSignal = signal(0);
-  private readonly loadingSignal = signal(false);
-  private readonly errorSignal = signal(false);
-
-  readonly users = this.usersSignal.asReadonly();
-  readonly total = this.totalSignal.asReadonly();
-  readonly loading = this.loadingSignal.asReadonly();
-  // Set when the last `reload()` failed (network error, 403, 5xx — a 401 is
-  // already handled globally by authInterceptor). The component renders this
-  // so a failed load is never silently invisible to the user.
-  readonly error = this.errorSignal.asReadonly();
-  readonly page = computed(() => this.state().page);
-  readonly pageSize = computed(() => this.state().pageSize);
-  readonly search = computed(() => this.state().search);
-
-  setPage(page: number): void {
-    this.state.update((current) => ({ ...current, page }));
-    this.reload();
-  }
+  readonly users = this.items;
+  readonly search = computed(() => this.filters().search ?? '');
 
   // Changing the search resets to the first page: keeping the current page
   // would leave the user staring at an empty page of a smaller result set.
   setSearch(search: string): void {
-    this.state.update((current) => ({ ...current, search, page: 1 }));
-    this.reload();
-  }
-
-  // Changing the page size resets to the first page for the same reason as
-  // setSearch: the current page index may not exist under the new size.
-  setPageSize(pageSize: number): void {
-    this.state.update((current) => ({ ...current, pageSize, page: 1 }));
-    this.reload();
-  }
-
-  reload(): void {
-    const { page, pageSize, search } = this.state();
-    let params = new HttpParams().set('page', page).set('pageSize', pageSize);
-    if (search) {
-      params = params.set('search', search);
-    }
-
-    this.loadingSignal.set(true);
-    this.errorSignal.set(false);
-    this.http
-      .get<PaginatedResponse<UserDto>>(`${this.apiUrl}/users`, { params })
-      .pipe(finalize(() => this.loadingSignal.set(false)))
-      .subscribe({
-        next: (response) => {
-          this.usersSignal.set(response.data);
-          this.totalSignal.set(response.total);
-        },
-        error: () => this.errorSignal.set(true),
-      });
+    this.setFilters({ search: search || undefined });
   }
 
   create(request: CreateUserRequest): Observable<UserDto> {
-    return this.http
-      .post<UserDto>(`${this.apiUrl}/users`, request)
-      .pipe(tap(() => this.reload()));
+    return this.api.post<UserDto>('/users', request).pipe(tap(() => this.reload()));
   }
 
   deactivate(id: string): Observable<UserDto> {
-    return this.http
-      .patch<UserDto>(`${this.apiUrl}/users/${id}/deactivate`, {})
+    return this.api
+      .patch<UserDto>(`/users/${id}/deactivate`, {})
       .pipe(tap(() => this.reload()));
   }
 }
