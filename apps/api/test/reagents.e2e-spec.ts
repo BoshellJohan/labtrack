@@ -202,7 +202,7 @@ describe('Reagents (e2e)', () => {
     expect(storedBatch.active).toBe(false);
   });
 
-  it('groups stockByUnit by unit without summing across units', async () => {
+  it('groups stockByUnit by unit, summing within a unit but never across units', async () => {
     const token = await tokenFor('admin');
     const created = body<ReagentDto>(
       await request(app.getHttpServer())
@@ -213,6 +213,8 @@ describe('Reagents (e2e)', () => {
     const location = await prisma.location.create({
       data: { name: 'Estante A', madeById: adminId },
     });
+    // Two ML batches (500 + 250) must accumulate into one ML entry; the L
+    // batch must stay separate rather than being folded into the total.
     await prisma.reagentBatch.createMany({
       data: [
         {
@@ -228,6 +230,16 @@ describe('Reagents (e2e)', () => {
         {
           reagentId: created.id,
           lotNumber: 'L2',
+          entryDate: new Date(),
+          initialStock: '250',
+          currentStock: '250',
+          unit: 'ML',
+          locationId: location.id,
+          madeById: adminId,
+        },
+        {
+          reagentId: created.id,
+          lotNumber: 'L3',
           entryDate: new Date(),
           initialStock: '2',
           currentStock: '2',
@@ -246,7 +258,7 @@ describe('Reagents (e2e)', () => {
     expect(fetched.stockByUnit).toHaveLength(2);
     expect(fetched.stockByUnit).toEqual(
       expect.arrayContaining([
-        { unit: 'ML', total: '500' },
+        { unit: 'ML', total: '750' },
         { unit: 'L', total: '2' },
       ]),
     );

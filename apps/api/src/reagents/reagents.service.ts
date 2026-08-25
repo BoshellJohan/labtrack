@@ -7,7 +7,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { runInTransaction } from '../common/prisma/transaction';
 import { toReagentDto } from '../common/mappers/reagent.mapper';
-import { buildReagentWhere } from './reagent-ids.query';
+import { selectReagentIds } from './reagent-ids.query';
 import { CreateReagentDto } from './dto/create-reagent.dto';
 import { UpdateReagentDto } from './dto/update-reagent.dto';
 import { ListReagentsQueryDto } from './dto/list-reagents-query.dto';
@@ -19,27 +19,17 @@ export class ReagentsService {
   async list(
     query: ListReagentsQueryDto,
   ): Promise<PaginatedResponse<ReagentDto>> {
-    const where = buildReagentWhere(query);
-
-    // Step 1 — which reagents qualify, and how many in total. The count uses the
-    // same `where` as the page, so the paginator can never disagree with the rows.
-    const [ids, total] = await this.prisma.$transaction([
-      this.prisma.reagent.findMany({
-        where,
-        select: { id: true },
-        orderBy: { [query.sortBy]: query.sortOrder },
-        skip: query.skip,
-        take: query.pageSize,
-      }),
-      this.prisma.reagent.count({ where }),
-    ]);
+    // Step 1 — which reagents qualify, and how many in total. See
+    // reagent-ids.query.ts for why this is a call rather than inline code.
+    const { ids, total } = await selectReagentIds(this.prisma, query);
 
     // Step 2 — hydrate exactly those ids with their batches. The ordering is
-    // repeated because `where: { id: { in } }` does not preserve the id order.
+    // repeated (with the same `id` tie-break) because `where: { id: { in } }`
+    // does not preserve the id order.
     const rows = await this.prisma.reagent.findMany({
-      where: { id: { in: ids.map((row) => row.id) } },
+      where: { id: { in: ids } },
       include: { batches: true },
-      orderBy: { [query.sortBy]: query.sortOrder },
+      orderBy: [{ [query.sortBy]: query.sortOrder }, { id: 'asc' }],
     });
 
     return buildPaginatedResponse(

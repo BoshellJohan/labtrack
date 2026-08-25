@@ -1,17 +1,12 @@
 import { Prisma } from '../prisma/client';
+import { PrismaService } from '../prisma/prisma.service';
 import { ListReagentsQueryDto } from './dto/list-reagents-query.dto';
 
 /**
- * Translates the simple filters into a Prisma `where`.
- *
- * This is deliberately separate from the service: spec §6.2 adds a filter that
- * cannot be expressed as a `where` at all — "reagents whose consumption exceeded
- * X in a date range" is a HAVING over grouped consumptions, and it will arrive
- * as a second strategy that returns ids from a raw query. Keeping id selection
- * apart from hydration means that arrives as a new branch here rather than as a
- * rewrite of list().
+ * Translates the simple filters into a Prisma `where`. Internal to this file:
+ * callers only need `selectReagentIds` below.
  */
-export function buildReagentWhere(
+function buildReagentWhere(
   query: ListReagentsQueryDto,
 ): Prisma.ReagentWhereInput {
   const where: Prisma.ReagentWhereInput = {};
@@ -31,4 +26,48 @@ export function buildReagentWhere(
   }
 
   return where;
+}
+
+export interface ReagentIdSelection {
+  ids: string[];
+  total: number;
+}
+
+/**
+ * Resolves which reagent ids qualify for one page of `list()`, and how many
+ * qualify in total.
+ *
+ * This owns the whole of step one — not just the `where`. Spec §6.2 adds a
+ * filter that cannot be expressed as a `where` at all: "reagents whose
+ * consumption exceeded X in a date range" is a HAVING over grouped
+ * consumptions, and it will arrive as a raw-query strategy that returns ids
+ * from `$queryRaw` instead of `findMany`. That strategy becomes a new branch
+ * inside this function — its own `where`, `count`, ordering and paging — so
+ * `list()`'s hydration step and the controller never need to change.
+ *
+ * `id` is a secondary sort key so the ordering here matches, row for row, the
+ * ordering `list()` repeats when it hydrates these same ids: two reagents
+ * that tie on `sortBy` would otherwise not be guaranteed the same tie-break
+ * across two separately executed queries.
+ */
+export async function selectReagentIds(
+  prisma: PrismaService,
+  query: ListReagentsQueryDto,
+): Promise<ReagentIdSelection> {
+  const where = buildReagentWhere(query);
+
+  // The count uses the same `where` as the page, and both run in the same
+  // transaction, so the total can never disagree with the rows it counts.
+  const [rows, total] = await prisma.$transaction([
+    prisma.reagent.findMany({
+      where,
+      select: { id: true },
+      orderBy: [{ [query.sortBy]: query.sortOrder }, { id: 'asc' }],
+      skip: query.skip,
+      take: query.pageSize,
+    }),
+    prisma.reagent.count({ where }),
+  ]);
+
+  return { ids: rows.map((row) => row.id), total };
 }
