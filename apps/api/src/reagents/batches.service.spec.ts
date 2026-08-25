@@ -58,10 +58,35 @@ const validDto = {
   locationId: 'loc1',
 };
 
+// Shape Prisma actually returns from `reagentBatch.create` under
+// `include: WITH_RELATIONS` — realistic enough for `toBatchDto` to read
+// every field it accesses without the mapper needing to guard for absence.
+function buildCreatedBatch(overrides: { expirationDate?: Date | null } = {}) {
+  return {
+    id: 'b1',
+    reagentId: 'r1',
+    lotNumber: 'L-1',
+    entryDate: new Date('2026-01-10'),
+    expirationDate:
+      overrides.expirationDate === undefined
+        ? new Date('2027-01-10')
+        : overrides.expirationDate,
+    initialStock: '500.0000',
+    currentStock: '500.0000',
+    unit: 'ML',
+    locationId: 'loc1',
+    active: true,
+    createdAt: new Date('2026-01-10'),
+    updatedAt: new Date('2026-01-10'),
+    reagent: { name: 'Acetona' },
+    location: { name: 'Estante A' },
+  };
+}
+
 describe('BatchesService.create', () => {
   it('sets currentStock from initialStock and never from the request', async () => {
     const { service, prisma } = buildService();
-    prisma.reagentBatch.create.mockResolvedValue({});
+    prisma.reagentBatch.create.mockResolvedValue(buildCreatedBatch());
 
     await service.create('r1', validDto, 'admin-1');
 
@@ -100,7 +125,9 @@ describe('BatchesService.create', () => {
 
   it('accepts a batch with no expiration date', async () => {
     const { service, prisma } = buildService();
-    prisma.reagentBatch.create.mockResolvedValue({});
+    prisma.reagentBatch.create.mockResolvedValue(
+      buildCreatedBatch({ expirationDate: null }),
+    );
     const { expirationDate, ...withoutExpiry } = validDto;
     await expect(
       service.create('r1', withoutExpiry as never, 'admin-1'),
