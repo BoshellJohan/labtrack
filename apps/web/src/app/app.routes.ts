@@ -13,6 +13,12 @@ export const routes: Routes = [
     canActivate: [authGuard, adminGuard],
     loadComponent: () => import('./features/users/users.component').then((m) => m.UsersComponent),
   },
+  {
+    path: 'ubicaciones',
+    canActivate: [authGuard, adminGuard],
+    loadComponent: () =>
+      import('./features/locations/locations.component').then((m) => m.LocationsComponent),
+  },
   // The home page is the post-login destination for both roles: /usuarios is
   // admin-only, so a non-admin would be bounced straight back out of it.
   {

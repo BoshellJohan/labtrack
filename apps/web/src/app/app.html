@@ -3,6 +3,7 @@
     <span class="brand">{{ common.appName }}</span>
     @if (auth.isAdmin()) {
       <a mat-button routerLink="/usuarios">{{ common.usersLink }}</a>
+      <a mat-button routerLink="/ubicaciones">{{ common.locationsLink }}</a>
     }
     <span class="spacer"></span>
     <span class="user">{{ auth.currentUser()?.fullName }}</span>

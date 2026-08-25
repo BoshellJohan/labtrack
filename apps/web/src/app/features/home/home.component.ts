@@ -19,12 +19,16 @@ import { HOME_ES } from './i18n.es';
       <p>{{ text.greeting }}, {{ auth.currentUser()?.fullName }}.</p>
       <p>{{ text.pendingPhase }}</p>
       @if (auth.isAdmin()) {
-        <a mat-flat-button color="primary" routerLink="/usuarios">{{ text.usersLink }}</a>
+        <div class="links">
+          <a mat-flat-button color="primary" routerLink="/usuarios">{{ text.usersLink }}</a>
+          <a mat-flat-button color="primary" routerLink="/ubicaciones">{{ text.locationsLink }}</a>
+        </div>
       }
     </mat-card>
   `,
   styles: `
     .card { max-width: 40rem; margin: 3rem auto; padding: 2rem; display: flex; flex-direction: column; align-items: flex-start; gap: 1rem; }
+    .links { display: flex; gap: 1rem; }
   `,
 })
 export class HomeComponent {
