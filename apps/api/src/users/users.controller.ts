@@ -1,4 +1,13 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Patch,
+  Post,
+  Query,
+} from '@nestjs/common';
 import { PaginatedResponse, UserDto } from '@labtrack/shared';
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';

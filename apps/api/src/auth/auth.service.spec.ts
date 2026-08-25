@@ -45,7 +45,11 @@ describe('AuthService.login', () => {
     expect(result.user).toEqual(
       expect.objectContaining({ id: 'user-1', username: 'ana', role: 'USER' }),
     );
-    expect(jwt.signAsync).toHaveBeenCalledWith({ sub: 'user-1', username: 'ana', role: 'USER' });
+    expect(jwt.signAsync).toHaveBeenCalledWith({
+      sub: 'user-1',
+      username: 'ana',
+      role: 'USER',
+    });
   });
 
   it('never exposes the password hash', async () => {
@@ -56,29 +60,37 @@ describe('AuthService.login', () => {
 
   it('rejects an unknown username', async () => {
     const { service } = buildService({ user: null });
-    await expect(service.login({ username: 'ghost', password: 'x' })).rejects.toBeInstanceOf(
-      UnauthorizedException,
-    );
+    await expect(
+      service.login({ username: 'ghost', password: 'x' }),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
   });
 
   it('rejects a wrong password', async () => {
-    const { service } = buildService({ user: activeUser, passwordMatches: false });
-    await expect(service.login({ username: 'ana', password: 'wrong' })).rejects.toBeInstanceOf(
-      UnauthorizedException,
-    );
+    const { service } = buildService({
+      user: activeUser,
+      passwordMatches: false,
+    });
+    await expect(
+      service.login({ username: 'ana', password: 'wrong' }),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
   });
 
   it('rejects a deactivated user', async () => {
-    const { service } = buildService({ user: { ...activeUser, active: false } });
-    await expect(service.login({ username: 'ana', password: 'right' })).rejects.toBeInstanceOf(
-      UnauthorizedException,
-    );
+    const { service } = buildService({
+      user: { ...activeUser, active: false },
+    });
+    await expect(
+      service.login({ username: 'ana', password: 'right' }),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
   });
 });
 
 describe('AuthService.changePassword', () => {
   it('rejects a wrong current password with a coded bad request, not a 401', async () => {
-    const { service } = buildService({ user: activeUser, passwordMatches: false });
+    const { service } = buildService({
+      user: activeUser,
+      passwordMatches: false,
+    });
 
     await expect(
       service.changePassword('user-1', {
@@ -87,12 +99,18 @@ describe('AuthService.changePassword', () => {
       }),
     ).rejects.toMatchObject({
       status: HttpStatus.BAD_REQUEST,
-      response: { statusCode: HttpStatus.BAD_REQUEST, code: 'INVALID_CURRENT_PASSWORD' },
+      response: {
+        statusCode: HttpStatus.BAD_REQUEST,
+        code: 'INVALID_CURRENT_PASSWORD',
+      },
     });
   });
 
   it('stores the new hash and clears mustChangePassword', async () => {
-    const { service, prisma } = buildService({ user: activeUser, passwordMatches: true });
+    const { service, prisma } = buildService({
+      user: activeUser,
+      passwordMatches: true,
+    });
 
     await service.changePassword('user-1', {
       currentPassword: 'initial-password',

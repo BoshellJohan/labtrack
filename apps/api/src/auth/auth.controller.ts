@@ -1,4 +1,12 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Patch, Post } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Patch,
+  Post,
+} from '@nestjs/common';
 import { LoginResponse, UserDto } from '@labtrack/shared';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';

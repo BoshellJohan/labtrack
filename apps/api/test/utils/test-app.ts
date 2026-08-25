@@ -12,7 +12,9 @@ export interface TestContext {
 
 export async function createTestApp(): Promise<TestContext> {
   assertTestDatabase(process.env.DATABASE_URL);
-  const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
+  const moduleRef = await Test.createTestingModule({
+    imports: [AppModule],
+  }).compile();
   const app = moduleRef.createNestApplication();
   configureApp(app);
   await app.init();
@@ -26,5 +28,7 @@ export async function createTestApp(): Promise<TestContext> {
 // between one suite's truncate and another's inserts.
 export async function resetDatabase(prisma: PrismaService): Promise<void> {
   assertTestDatabase(process.env.DATABASE_URL);
-  await prisma.$executeRawUnsafe('TRUNCATE TABLE "User" RESTART IDENTITY CASCADE');
+  await prisma.$executeRawUnsafe(
+    'TRUNCATE TABLE "User" RESTART IDENTITY CASCADE',
+  );
 }
