@@ -19,6 +19,14 @@ export const routes: Routes = [
     loadComponent: () =>
       import('./features/locations/locations.component').then((m) => m.LocationsComponent),
   },
+  // Any authenticated user may reach the reagents screen: only the
+  // management buttons inside it are admin-gated.
+  {
+    path: 'reactivos',
+    canActivate: [authGuard],
+    loadComponent: () =>
+      import('./features/reagents/reagents.component').then((m) => m.ReagentsComponent),
+  },
   // The home page is the post-login destination for both roles: /usuarios is
   // admin-only, so a non-admin would be bounced straight back out of it.
   {

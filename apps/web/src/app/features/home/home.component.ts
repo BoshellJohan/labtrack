@@ -18,12 +18,13 @@ import { HOME_ES } from './i18n.es';
       <h1>{{ text.title }}</h1>
       <p>{{ text.greeting }}, {{ auth.currentUser()?.fullName }}.</p>
       <p>{{ text.pendingPhase }}</p>
-      @if (auth.isAdmin()) {
-        <div class="links">
+      <div class="links">
+        <a mat-flat-button color="primary" routerLink="/reactivos">{{ text.reagentsLink }}</a>
+        @if (auth.isAdmin()) {
           <a mat-flat-button color="primary" routerLink="/usuarios">{{ text.usersLink }}</a>
           <a mat-flat-button color="primary" routerLink="/ubicaciones">{{ text.locationsLink }}</a>
-        </div>
-      }
+        }
+      </div>
     </mat-card>
   `,
   styles: `
