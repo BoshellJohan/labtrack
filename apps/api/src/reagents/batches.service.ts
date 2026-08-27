@@ -23,10 +23,18 @@ export class BatchesService {
   async listForReagent(
     reagentId: string,
     query: ListBatchesQueryDto,
+    includeInactive: boolean,
   ): Promise<PaginatedResponse<ReagentBatchDto>> {
     const where: Prisma.ReagentBatchWhereInput = { reagentId };
-    if (!query.includeInactive) {
+    if (!includeInactive) {
+      // Defensive, not incidental: today `deactivate()` on a reagent always
+      // cascades to its batches in the same transaction, so this condition
+      // never changes the result. But this endpoint's safety should not rely
+      // on that cascade holding forever — a non-admin must never see batches
+      // of a reagent that is itself inactive, even if a future code path
+      // ever deactivates a reagent without its batches.
       where.active = true;
+      where.reagent = { active: true };
     }
 
     // The count and the rows are read in the same transaction, and the id

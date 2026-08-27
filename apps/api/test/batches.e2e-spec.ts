@@ -226,4 +226,38 @@ describe('Batches (e2e)', () => {
       .set('Authorization', `Bearer ${await tokenFor('admin')}`)
       .expect(404);
   });
+
+  // Regression for a latent gap: listForReagent's visibility used to rely
+  // entirely on Reagent.deactivate() cascading to its batches. Here the
+  // reagent is deactivated by writing `active: false` straight through
+  // Prisma, deliberately skipping that cascade, so the batch stays active.
+  // If listForReagent ever stops checking the parent reagent itself, this
+  // is the test that catches it.
+  it('hides an active batch from a non-admin once its reagent is inactive, even if the batch itself was never deactivated', async () => {
+    const token = await tokenFor('admin');
+    const created = body<ReagentBatchDto>(
+      await request(app.getHttpServer())
+        .post(`/reagents/${reagentId}/batches`)
+        .set('Authorization', `Bearer ${token}`)
+        .send(validBatch()),
+    );
+
+    await prisma.reagent.update({
+      where: { id: reagentId },
+      data: { active: false },
+    });
+
+    const stillActiveBatch = await prisma.reagentBatch.findUniqueOrThrow({
+      where: { id: created.id },
+    });
+    expect(stillActiveBatch.active).toBe(true);
+
+    const listed = body<PaginatedResponse<ReagentBatchDto>>(
+      await request(app.getHttpServer())
+        .get(`/reagents/${reagentId}/batches`)
+        .set('Authorization', `Bearer ${await tokenFor('ana')}`)
+        .expect(200),
+    );
+    expect(listed.data).toEqual([]);
+  });
 });

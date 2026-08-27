@@ -33,7 +33,7 @@ export class ReagentBatchesController {
     @CurrentUser() actor: AuthenticatedUser,
   ): Promise<PaginatedResponse<ReagentBatchDto>> {
     assertIncludeInactiveAllowed(query.includeInactive, actor.role);
-    return this.batches.listForReagent(id, query);
+    return this.batches.listForReagent(id, query, !!query.includeInactive);
   }
 
   @Post(':id/batches')

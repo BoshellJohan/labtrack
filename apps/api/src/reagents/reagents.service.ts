@@ -101,6 +101,11 @@ export class ReagentsService {
       { isolationLevel: 'ReadCommitted' },
     );
 
+    // `true` is safe here, not arbitrary: this route is `@Roles('ADMIN')`-gated
+    // (see the controller), and this call re-reads the row this method just
+    // deactivated, so it must bypass the active filter or it would 404 on its
+    // own write. If `deactivate`'s role guard is ever relaxed, this literal
+    // needs to be revisited too.
     return this.findOne(id, true);
   }
 }
