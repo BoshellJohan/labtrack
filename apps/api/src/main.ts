@@ -15,6 +15,11 @@ async function bootstrap(): Promise<void> {
   app.enableCors({ origin: corsOrigin, credentials: false });
   configureApp(app);
 
+  // Enable lifecycle hooks on shutdown: without this, OnModuleDestroy in PrismaService
+  // never fires in production, so the Prisma connection pool is not gracefully closed.
+  // On redeploy, SIGTERM kills in-flight requests instead of draining them.
+  app.enableShutdownHooks();
+
   // Bound to 0.0.0.0 explicitly: container platforms route to the published
   // port on the container's external interface, and a process listening only on
   // a loopback address is unreachable from the proxy even though it started
