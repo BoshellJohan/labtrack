@@ -1,0 +1,20 @@
+export const REGISTER_CONSUMPTION_ES = {
+  title: 'Registrar consumo',
+  reagent: 'Reactivo',
+  selectReagent: 'Selecciona un reactivo',
+  batch: 'Lote',
+  selectBatch: 'Selecciona un lote',
+  noBatches: 'Este reactivo no tiene lotes activos.',
+  batchOption: (lot: string, stock: string, unit: string) =>
+    `Lote ${lot} · ${stock} ${unit} disponibles`,
+  expiresOn: 'Vence el',
+  noExpiry: 'Sin fecha de vencimiento',
+  quantity: 'Cantidad',
+  consumedAt: 'Fecha del consumo',
+  purpose: 'Propósito',
+  submit: 'Registrar',
+  exceedsStock: 'La cantidad supera las existencias del lote.',
+  invalidQuantity: 'Escribe una cantidad con hasta 4 decimales.',
+  success: 'Consumo registrado.',
+  failure: 'No se pudo registrar el consumo.',
+} as const;
