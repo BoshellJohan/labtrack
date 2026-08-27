@@ -324,4 +324,35 @@ describe('Reagents (e2e)', () => {
     const page = body<PaginatedResponse<ReagentDto>>(response);
     expect(page.data.map((r) => r.name)).toEqual(['Acetona']);
   });
+
+  it('finds a name containing ñ by its exact spelling, and also by the n-folded spelling', async () => {
+    const admin = await prisma.user.findUniqueOrThrow({
+      where: { username: 'admin' },
+    });
+    await prisma.reagent.create({
+      data: {
+        name: 'Estaño metálico',
+        casNumber: '7440-31-5',
+        madeById: admin.id,
+      },
+    });
+
+    const token = await tokenFor('admin');
+
+    const exact = body<PaginatedResponse<ReagentDto>>(
+      await request(app.getHttpServer())
+        .get('/reagents?name=estaño')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200),
+    );
+    expect(exact.data.map((r) => r.name)).toEqual(['Estaño metálico']);
+
+    const folded = body<PaginatedResponse<ReagentDto>>(
+      await request(app.getHttpServer())
+        .get('/reagents?name=estano')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200),
+    );
+    expect(folded.data.map((r) => r.name)).toEqual(['Estaño metálico']);
+  });
 });

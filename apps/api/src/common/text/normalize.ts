@@ -4,18 +4,21 @@
  * normalized the same way or the comparison silently misses: normalizing only
  * one side finds `Ácido` for `acido` but not `Acetona` for `acetóna`.
  *
- * `ñ` survives because Postgres unaccent dictionary treats it as its own
- * letter rather than an accented `n`, and Spanish agrees -- `año` and `ano`
- * are different words. The escape list below is deliberate rather than the
- * broader p{Diacritic}: it covers the marks Postgres dictionary folds
- * (grave U+0300, acute U+0301, circumflex U+0302, diaeresis U+0308, ring
- * U+030A, cedilla U+0327) while leaving out the combining tilde U+0303 of
- * `ñ`, which the following NFC reconstitutes.
+ * Verified directly against Postgres: `f_unaccent('Estaño')` returns
+ * `'Estano'`, `f_unaccent('Ação')` returns `'Acao'`. The unaccent dictionary
+ * folds every combining mark it can decompose, including the combining
+ * tilde over `n`/`o`/`a` — it does not treat `ñ`/`ã`/`õ` as letters of their
+ * own. This normalizer has no freedom to disagree: it exists only to
+ * reproduce that exact expression, not to make a judgment about Spanish
+ * orthography. So it strips every Unicode combining mark after NFD, via
+ * `\p{Diacritic}`, and skips the NFC recomposition step entirely — there is
+ * nothing left to recompose once all marks are gone. The stored `name`
+ * column is untouched by any of this; only the search-side comparison folds
+ * `ñ` to `n`.
  */
 export function normalizeForSearch(value: string): string {
   return value
     .normalize('NFD')
-    .replace(/[̧̀́̂̈̊]/g, '')
-    .normalize('NFC')
+    .replace(/\p{Diacritic}/gu, '')
     .toLowerCase();
 }
