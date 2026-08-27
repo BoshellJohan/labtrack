@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, OnInit, computed, inject, signal } from '@angular/core';
 import { DatePipe } from '@angular/common';
-import { toSignal } from '@angular/core/rxjs-interop';
+import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import { AbstractControl, FormBuilder, ReactiveFormsModule, ValidationErrors, Validators } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { provideNativeDateAdapter } from '@angular/material/core';
@@ -9,6 +9,7 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
 import { MatSnackBar } from '@angular/material/snack-bar';
+import { Subject, catchError, of, switchMap } from 'rxjs';
 import { CreateConsumptionRequest, ReagentBatchDto, ReagentDto } from '@labtrack/shared';
 import { ApiService } from '../../core/api/api.service';
 import { REAGENTS_ES } from '../reagents/i18n.es';
@@ -43,6 +44,16 @@ function compareDecimalStrings(a: string, b: string): number {
 // client-side so a malformed quantity is caught before a round trip.
 const QUANTITY_PATTERN = /^\d{1,8}(\.\d{1,4})?$/;
 
+// The datepicker yields a Date at *local* midnight. Calling .toISOString()
+// on it directly converts that local instant to UTC, which shifts the
+// calendar day backwards in any timezone ahead of UTC (e.g. local midnight
+// Aug 1 in Madrid, UTC+2, is 2026-07-31T22:00:00.000Z). Build the UTC instant
+// from the picker's calendar-day components instead, mirroring how
+// ReagentsComponent.expiryStatus() normalizes a date to a UTC calendar day.
+function toUtcMidnightIso(date: Date): string {
+  return new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate())).toISOString();
+}
+
 @Component({
   selector: 'lt-register-consumption',
   standalone: true,
@@ -66,10 +77,7 @@ const QUANTITY_PATTERN = /^\d{1,8}(\.\d{1,4})?$/;
       <form [formGroup]="form" (ngSubmit)="submit()">
         <mat-form-field appearance="outline">
           <mat-label>{{ text.reagent }}</mat-label>
-          <mat-select
-            [value]="form.controls.reagentId.value"
-            (selectionChange)="selectReagent($event.value)"
-          >
+          <mat-select formControlName="reagentId">
             @for (reagent of reagentOptions(); track reagent.id) {
               <mat-option [value]="reagent.id">{{ reagent.name }}</mat-option>
             }
@@ -181,7 +189,40 @@ export class RegisterConsumptionComponent implements OnInit {
     this.batches().find((b) => b.id === this.batchIdSignal()),
   );
 
+  // Every reagent selection is pushed here instead of subscribed to
+  // directly; switchMap below cancels whatever /batches request is still in
+  // flight before starting the next one, so a slower earlier response can
+  // never overwrite a faster later one (see PaginatedStore.reload$ for the
+  // same pattern). Without this, picking reagent A then B before A's
+  // response lands would let A's batches land in the form after B is
+  // already selected — the exact cross-reagent mix-up this screen exists to
+  // prevent, just reached through a race instead of a missing reset.
+  private readonly reagentSelected$ = new Subject<string>();
+
   constructor() {
+    this.reagentSelected$
+      .pipe(
+        switchMap((id) => {
+          if (!id) {
+            return of(null);
+          }
+          return this.api.getPage<ReagentBatchDto>(`/reagents/${id}/batches`, { pageSize: 100 }).pipe(
+            catchError(() => {
+              this.snackBar.open(COMMON_ES.unexpectedError, COMMON_ES.accept, { duration: 5000 });
+              return of(null);
+            }),
+          );
+        }),
+        takeUntilDestroyed(),
+      )
+      .subscribe((page) => this.batches.set(page ? page.data : []));
+
+    this.form.controls.reagentId.valueChanges.subscribe((id) => {
+      this.form.controls.batchId.setValue('');
+      this.batches.set([]);
+      this.reagentSelected$.next(id);
+    });
+
     // The stock a quantity is checked against changes whenever the batch
     // does, so re-run the quantity validator whenever batchId changes.
     this.form.controls.batchId.valueChanges.subscribe(() =>
@@ -201,16 +242,6 @@ export class RegisterConsumptionComponent implements OnInit {
   // loaded for a single, explicitly chosen reagent — never across reagents.
   selectReagent(id: string): void {
     this.form.controls.reagentId.setValue(id);
-    this.form.controls.batchId.setValue('');
-    this.batches.set([]);
-    if (!id) {
-      return;
-    }
-    this.api.getPage<ReagentBatchDto>(`/reagents/${id}/batches`, { pageSize: 100 }).subscribe({
-      next: (page) => this.batches.set(page.data),
-      error: () =>
-        this.snackBar.open(COMMON_ES.unexpectedError, COMMON_ES.accept, { duration: 5000 }),
-    });
   }
 
   formatQuantity(value: string): string {
@@ -231,7 +262,7 @@ export class RegisterConsumptionComponent implements OnInit {
       // Verbatim from the control: '0.3000' must never round-trip through
       // Number and come back as '0.3'.
       quantity,
-      consumedAt: consumedAt!.toISOString(),
+      consumedAt: toUtcMidnightIso(consumedAt!),
       purpose,
     };
     this.api.post('/consumptions', request).subscribe({

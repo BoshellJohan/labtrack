@@ -102,6 +102,59 @@ describe('RegisterConsumptionComponent', () => {
     http.expectNone((r) => r.method === 'POST');
   });
 
+  it('lets a later reagent selection win over a slower earlier response', () => {
+    // switchMap must cancel A's in-flight request when B is selected, the
+    // same pattern PaginatedStore uses for reload(). Selecting B before A's
+    // response arrives, then flushing B's response, proves this: on a naive
+    // implementation (no switchMap) A's request would still be open and its
+    // later response would overwrite B's batches in the form, even though
+    // the reagent selector already shows B. HttpTestingController itself
+    // confirms the cancellation — flushing A's now-superseded request
+    // throws, which is the assertion below.
+    component.selectReagent('r1');
+    const requestA = http.expectOne((r) => r.url === '/reagents/r1/batches');
+
+    component.selectReagent('r2');
+    const requestB = http.expectOne((r) => r.url === '/reagents/r2/batches');
+
+    requestB.flush({
+      data: [{ ...batchFixture, id: 'b2', lotNumber: 'L-2' }],
+      total: 1,
+      page: 1,
+      pageSize: 100,
+      totalPages: 1,
+    });
+
+    expect(() =>
+      requestA.flush({ data: [batchFixture], total: 1, page: 1, pageSize: 100, totalPages: 1 }),
+    ).toThrow('Cannot flush a cancelled request.');
+    expect(component.batches().map((b) => b.lotNumber)).toEqual(['L-2']);
+  });
+
+  it('builds consumedAt from the picker calendar day, not its local-to-UTC instant', () => {
+    // new Date(2026, 7, 1) is LOCAL midnight on August 1st, 2026 — exactly
+    // what the Material datepicker hands the form. Naively calling
+    // .toISOString() on that converts the local instant to UTC, which in any
+    // timezone ahead of UTC shifts the stored calendar day back to July 31st.
+    // The fixture below is already UTC midnight, so it would pass even with
+    // that bug — this one does not.
+    component.selectReagent('r1');
+    http
+      .expectOne((r) => r.url === '/reagents/r1/batches')
+      .flush({ data: [batchFixture], total: 1, page: 1, pageSize: 100, totalPages: 1 });
+    component.form.patchValue({
+      batchId: 'b1',
+      quantity: '1.0000',
+      consumedAt: new Date(2026, 7, 1),
+      purpose: 'Práctica',
+    });
+
+    component.submit();
+
+    const request = http.expectOne((r) => r.method === 'POST' && r.url === '/consumptions');
+    expect(request.request.body.consumedAt).toBe('2026-08-01T00:00:00.000Z');
+  });
+
   it('sends the quantity as the string the user typed, never a parsed number', () => {
     component.selectReagent('r1');
     http
