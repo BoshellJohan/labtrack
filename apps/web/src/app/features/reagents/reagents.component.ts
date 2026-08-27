@@ -16,6 +16,7 @@ import { distinctUntilChanged } from 'rxjs';
 import {
   CreateBatchRequest,
   CreateReagentRequest,
+  LocationDto,
   ReagentBatchDto,
   ReagentDto,
   Unit,
@@ -78,7 +79,7 @@ type ExpiryStatus = 'expired' | 'warning' | 'ok';
           <mat-label>{{ text.filters.location }}</mat-label>
           <mat-select [formControl]="locationControl">
             <mat-option value="">{{ text.filters.allLocations }}</mat-option>
-            @for (location of locationsStore.locations(); track location.id) {
+            @for (location of locationOptions(); track location.id) {
               <mat-option [value]="location.id">{{ location.name }}</mat-option>
             }
           </mat-select>
@@ -254,7 +255,7 @@ type ExpiryStatus = 'expired' | 'warning' | 'ok';
 export class ReagentsComponent implements OnInit {
   readonly store = inject(ReagentsStore);
   readonly batchesStore = inject(BatchesStore);
-  readonly locationsStore = inject(LocationsStore);
+  private readonly locationsStore = inject(LocationsStore);
   readonly auth = inject(AuthService);
   private readonly dialog = inject(MatDialog);
   private readonly snackBar = inject(MatSnackBar);
@@ -268,6 +269,7 @@ export class ReagentsComponent implements OnInit {
   readonly locationControl = new FormControl('', { nonNullable: true });
 
   readonly expandedId = signal<string | null>(null);
+  readonly locationOptions = signal<LocationDto[]>([]);
 
   constructor() {
     // The store itself debounces the name filter (see ReagentsStore), so no
@@ -299,9 +301,10 @@ export class ReagentsComponent implements OnInit {
 
   ngOnInit(): void {
     this.store.reload();
-    // The location picker (filter dropdown here, and the batch form) needs
-    // every active location, not just the first page a search box would show.
-    this.locationsStore.setPageSize(100);
+    // listActive() bypasses LocationsStore's own paginated view state: a
+    // setPageSize() call here previously leaked into /ubicaciones, since
+    // that store is shared (providedIn: 'root').
+    this.locationsStore.listActive().subscribe((locations) => this.locationOptions.set(locations));
   }
 
   onPage(event: PageEvent): void {
@@ -332,16 +335,35 @@ export class ReagentsComponent implements OnInit {
     return this.text.unitAbbreviations[unit];
   }
 
+  // Both sides are normalized to a UTC calendar day (midnight), not compared
+  // as raw instants: batch.expirationDate is a date-only value stored at UTC
+  // midnight, and comparing it against Date.now() (an instant) flipped a lot
+  // to "expired" the moment UTC midnight of its expiration day arrived —
+  // 7pm the previous calendar day at UTC-5 — instead of only after that
+  // whole day had elapsed. Comparing day-to-day makes the result independent
+  // of what time of day "now" happens to be.
+  private static readonly MS_PER_DAY = 24 * 60 * 60 * 1000;
+
+  private todayUtcMidnight(): number {
+    const now = new Date();
+    return Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  }
+
   expiryStatus(batch: ReagentBatchDto): ExpiryStatus {
     if (!batch.expirationDate) {
       return 'ok';
     }
-    const expiration = new Date(batch.expirationDate).getTime();
-    const now = Date.now();
-    if (expiration < now) {
+    const expirationDate = new Date(batch.expirationDate);
+    const expiration = Date.UTC(
+      expirationDate.getUTCFullYear(),
+      expirationDate.getUTCMonth(),
+      expirationDate.getUTCDate(),
+    );
+    const today = this.todayUtcMidnight();
+    if (expiration < today) {
       return 'expired';
     }
-    const warningThreshold = now + this.text.expiryWarningDays * 24 * 60 * 60 * 1000;
+    const warningThreshold = today + this.text.expiryWarningDays * ReagentsComponent.MS_PER_DAY;
     return expiration <= warningThreshold ? 'warning' : 'ok';
   }
 

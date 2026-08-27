@@ -1,5 +1,5 @@
 import { Injectable, computed } from '@angular/core';
-import { Observable, tap } from 'rxjs';
+import { Observable, map, tap } from 'rxjs';
 import { CreateLocationRequest, LocationDto, UpdateLocationRequest } from '@labtrack/shared';
 import { PaginatedStore } from '../../shared/paginated-store';
 
@@ -37,5 +37,19 @@ export class LocationsStore extends PaginatedStore<LocationDto, LocationsFilters
     return this.api
       .patch<LocationDto>(`/locations/${id}/deactivate`, {})
       .pipe(tap(() => this.reload()));
+  }
+
+  // For a picker (a filter dropdown, or the batch form's location select)
+  // that wants every active location. Deliberately bypasses this store's own
+  // paginated view state (page/pageSize/filters signals): a picker calling
+  // setPageSize() here previously leaked into whatever component was
+  // currently showing /ubicaciones, since this store is providedIn: 'root'
+  // and shared by both screens. 100 is the API's own page-size ceiling
+  // (PaginationQueryDto @Max(100)); a deployment with more active locations
+  // than that will still be missing some from the picker.
+  listActive(): Observable<LocationDto[]> {
+    return this.api
+      .getPage<LocationDto>(this.path, { page: 1, pageSize: 100 })
+      .pipe(map((response) => response.data));
   }
 }

@@ -1,11 +1,11 @@
-import { ChangeDetectionStrategy, Component, OnInit, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, OnInit, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MAT_DIALOG_DATA, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
-import { CreateBatchRequest, UNITS, Unit } from '@labtrack/shared';
+import { CreateBatchRequest, LocationDto, UNITS, Unit } from '@labtrack/shared';
 import { LocationsStore } from '../locations/locations.store';
 import { REAGENTS_ES } from './i18n.es';
 import { COMMON_ES } from '../../shared/i18n/es';
@@ -61,7 +61,7 @@ export interface BatchFormDialogData {
       <mat-form-field appearance="outline">
         <mat-label>{{ text.batchForm.location }}</mat-label>
         <mat-select formControlName="locationId">
-          @for (location of locationsStore.locations(); track location.id) {
+          @for (location of locationOptions(); track location.id) {
             <mat-option [value]="location.id">{{ location.name }}</mat-option>
           }
         </mat-select>
@@ -81,10 +81,12 @@ export interface BatchFormDialogData {
 export class BatchFormDialog implements OnInit {
   readonly dialogRef = inject(MatDialogRef<BatchFormDialog, CreateBatchRequest>);
   readonly data = inject<BatchFormDialogData>(MAT_DIALOG_DATA);
-  readonly locationsStore = inject(LocationsStore);
+  private readonly locationsStore = inject(LocationsStore);
   readonly text = REAGENTS_ES;
   readonly common = COMMON_ES;
   readonly units = UNITS;
+
+  readonly locationOptions = signal<LocationDto[]>([]);
 
   private readonly decimalPattern = /^\d{1,8}(\.\d{1,4})?$/;
 
@@ -98,9 +100,10 @@ export class BatchFormDialog implements OnInit {
   });
 
   ngOnInit(): void {
-    // The batch dialog needs every active location for the picker, not just
-    // the first page a search box would otherwise show.
-    this.locationsStore.setPageSize(100);
+    // listActive() bypasses LocationsStore's own paginated view state (see
+    // its comment): setPageSize() here previously leaked into /ubicaciones,
+    // since that store is shared (providedIn: 'root').
+    this.locationsStore.listActive().subscribe((locations) => this.locationOptions.set(locations));
   }
 
   confirm(): void {
