@@ -29,6 +29,32 @@ function buildReagentWhere(
     where.batches = { some: { active: true, locationId: query.locationId } };
   }
 
+  // Both of these ask about a reagent's *batches*, so they are `some` clauses
+  // over active batches — a reagent qualifies when at least one batch does.
+  // They are separate `some` clauses on purpose: combining them into one would
+  // demand a single batch that is both expiring and low, which is a narrower
+  // question than either filter asks.
+  if (query.expiringBefore) {
+    where.batches = {
+      ...(where.batches ?? {}),
+      some: {
+        ...(where.batches?.some ?? {}),
+        active: true,
+        expirationDate: { not: null, lte: new Date(query.expiringBefore) },
+      },
+    };
+  }
+  if (query.lowStock) {
+    where.AND = [
+      ...(Array.isArray(where.AND) ? where.AND : []),
+      {
+        batches: {
+          some: { active: true, currentStock: { lte: query.lowStock } },
+        },
+      },
+    ];
+  }
+
   return where;
 }
 

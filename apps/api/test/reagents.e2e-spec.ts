@@ -355,4 +355,162 @@ describe('Reagents (e2e)', () => {
     );
     expect(folded.data.map((r) => r.name)).toEqual(['Estaño metálico']);
   });
+
+  it('filters to reagents holding a batch that expires before the given date', async () => {
+    const admin = await prisma.user.findUniqueOrThrow({
+      where: { username: 'admin' },
+    });
+    const location = await prisma.location.create({
+      data: { name: 'Estante F', madeById: admin.id },
+    });
+    const soon = await prisma.reagent.create({
+      data: { name: 'Caduca pronto', casNumber: '67-64-1', madeById: admin.id },
+    });
+    const later = await prisma.reagent.create({
+      data: {
+        name: 'Caduca tarde',
+        casNumber: '7647-01-0',
+        madeById: admin.id,
+      },
+    });
+    await prisma.reagentBatch.createMany({
+      data: [
+        {
+          reagentId: soon.id,
+          locationId: location.id,
+          lotNumber: 'S-1',
+          entryDate: new Date('2026-01-01T00:00:00.000Z'),
+          expirationDate: new Date('2026-09-01T00:00:00.000Z'),
+          initialStock: '10',
+          currentStock: '10',
+          unit: 'L',
+          madeById: admin.id,
+        },
+        {
+          reagentId: later.id,
+          locationId: location.id,
+          lotNumber: 'L-1',
+          entryDate: new Date('2026-01-01T00:00:00.000Z'),
+          expirationDate: new Date('2027-09-01T00:00:00.000Z'),
+          initialStock: '10',
+          currentStock: '10',
+          unit: 'L',
+          madeById: admin.id,
+        },
+      ],
+    });
+
+    const token = await tokenFor('admin');
+    const response = await request(app.getHttpServer())
+      .get('/reagents?expiringBefore=2026-12-31')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    const page = body<PaginatedResponse<ReagentDto>>(response);
+    expect(page.data.map((r) => r.name)).toEqual(['Caduca pronto']);
+  });
+
+  it('filters to reagents holding a batch at or below the given stock', async () => {
+    const admin = await prisma.user.findUniqueOrThrow({
+      where: { username: 'admin' },
+    });
+    const location = await prisma.location.create({
+      data: { name: 'Estante G', madeById: admin.id },
+    });
+    const low = await prisma.reagent.create({
+      data: { name: 'Queda poco', casNumber: '67-64-1', madeById: admin.id },
+    });
+    const plenty = await prisma.reagent.create({
+      data: { name: 'Queda mucho', casNumber: '7647-01-0', madeById: admin.id },
+    });
+    await prisma.reagentBatch.createMany({
+      data: [
+        {
+          reagentId: low.id,
+          locationId: location.id,
+          lotNumber: 'P-1',
+          entryDate: new Date('2026-01-01T00:00:00.000Z'),
+          initialStock: '100',
+          currentStock: '2.5000',
+          unit: 'L',
+          madeById: admin.id,
+        },
+        {
+          reagentId: plenty.id,
+          locationId: location.id,
+          lotNumber: 'M-1',
+          entryDate: new Date('2026-01-01T00:00:00.000Z'),
+          initialStock: '100',
+          currentStock: '80.0000',
+          unit: 'L',
+          madeById: admin.id,
+        },
+      ],
+    });
+
+    const token = await tokenFor('admin');
+    const response = await request(app.getHttpServer())
+      .get('/reagents?lowStock=5')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    const page = body<PaginatedResponse<ReagentDto>>(response);
+    expect(page.data.map((r) => r.name)).toEqual(['Queda poco']);
+  });
+
+  it('rejects a lowStock that is not a decimal string', async () => {
+    const token = await tokenFor('admin');
+    await request(app.getHttpServer())
+      .get('/reagents?lowStock=mucho')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(400);
+  });
+
+  it('combines lowStock with a name filter rather than replacing it', async () => {
+    const admin = await prisma.user.findUniqueOrThrow({
+      where: { username: 'admin' },
+    });
+    const location = await prisma.location.create({
+      data: { name: 'Estante H', madeById: admin.id },
+    });
+    const match = await prisma.reagent.create({
+      data: { name: 'Acetona', casNumber: '67-64-1', madeById: admin.id },
+    });
+    const otherLowStock = await prisma.reagent.create({
+      data: { name: 'Etanol', casNumber: '64-17-5', madeById: admin.id },
+    });
+    await prisma.reagentBatch.createMany({
+      data: [
+        {
+          reagentId: match.id,
+          locationId: location.id,
+          lotNumber: 'A-1',
+          entryDate: new Date('2026-01-01T00:00:00.000Z'),
+          initialStock: '100',
+          currentStock: '1.0000',
+          unit: 'L',
+          madeById: admin.id,
+        },
+        {
+          reagentId: otherLowStock.id,
+          locationId: location.id,
+          lotNumber: 'E-1',
+          entryDate: new Date('2026-01-01T00:00:00.000Z'),
+          initialStock: '100',
+          currentStock: '1.0000',
+          unit: 'L',
+          madeById: admin.id,
+        },
+      ],
+    });
+
+    const token = await tokenFor('admin');
+    const response = await request(app.getHttpServer())
+      .get('/reagents?lowStock=5&name=aceton')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    const page = body<PaginatedResponse<ReagentDto>>(response);
+    expect(page.data.map((r) => r.name)).toEqual(['Acetona']);
+  });
 });
