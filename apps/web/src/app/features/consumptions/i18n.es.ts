@@ -18,3 +18,40 @@ export const REGISTER_CONSUMPTION_ES = {
   success: 'Consumo registrado.',
   failure: 'No se pudo registrar el consumo.',
 } as const;
+
+export const CONSUMPTIONS_ES = {
+  title: 'Consumos',
+  columns: {
+    consumedAt: 'Fecha',
+    reagent: 'Reactivo',
+    lotNumber: 'Lote',
+    quantity: 'Cantidad',
+    purpose: 'Propósito',
+    madeBy: 'Registrado por',
+    status: 'Estado',
+    actions: 'Acciones',
+  },
+  filters: {
+    purpose: 'Propósito',
+    reagent: 'Reactivo',
+    allReagents: 'Todos los reactivos',
+    from: 'Desde',
+    to: 'Hasta',
+    includeVoided: 'Incluir anulados',
+  },
+  status: { active: 'Vigente', voided: 'Anulado' },
+  voidedBy: (name: string, reason: string) => `Anulado por ${name}: ${reason}`,
+  voidAction: 'Anular',
+  empty: 'No hay consumos que coincidan con los filtros.',
+  loadFailed: 'No se pudieron cargar los consumos.',
+} as const;
+
+export const VOID_CONSUMPTION_ES = {
+  title: 'Anular consumo',
+  explanation:
+    'La cantidad volverá a las existencias del lote y el consumo quedará marcado como anulado. Esta acción queda registrada con tu usuario.',
+  reason: 'Justificación',
+  reasonRequired: 'La justificación es obligatoria.',
+  confirm: 'Anular',
+  failure: 'No se pudo anular el consumo.',
+} as const;

@@ -38,6 +38,16 @@ export const routes: Routes = [
         (m) => m.RegisterConsumptionComponent,
       ),
   },
+  // Any authenticated user may consult the consumption history: only the
+  // void action inside it is admin-gated.
+  {
+    path: 'consumos',
+    canActivate: [authGuard],
+    loadComponent: () =>
+      import('./features/consumptions/consumptions.component').then(
+        (m) => m.ConsumptionsComponent,
+      ),
+  },
   // The home page is the post-login destination for both roles: /usuarios is
   // admin-only, so a non-admin would be bounced straight back out of it.
   {

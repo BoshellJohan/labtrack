@@ -7,4 +7,5 @@ export const HOME_ES = {
   locationsLink: 'Ir a ubicaciones',
   reagentsLink: 'Ir a reactivos',
   registerConsumptionLink: 'Registrar consumo',
+  consumptionsLink: 'Consumos',
 } as const;
