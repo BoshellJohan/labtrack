@@ -264,6 +264,20 @@ describe('Reagents (e2e)', () => {
     );
   });
 
+  it('blocks a non-admin from requesting includeInactive (spec §6.1: ADMIN only)', async () => {
+    await request(app.getHttpServer())
+      .get('/reagents?includeInactive=true')
+      .set('Authorization', `Bearer ${await tokenFor('ana')}`)
+      .expect(403);
+  });
+
+  it('lets an admin request includeInactive', async () => {
+    await request(app.getHttpServer())
+      .get('/reagents?includeInactive=true')
+      .set('Authorization', `Bearer ${await tokenFor('admin')}`)
+      .expect(200);
+  });
+
   it('exposes no DELETE route', async () => {
     await request(app.getHttpServer())
       .delete('/reagents/00000000-0000-0000-0000-000000000000')

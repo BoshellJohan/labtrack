@@ -16,17 +16,21 @@ import { ListReagentsQueryDto } from './dto/list-reagents-query.dto';
 import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../common/decorators/current-user.decorator';
+import { assertIncludeInactiveAllowed } from '../common/authorization/assert-include-inactive-allowed';
 
 @Controller('reagents')
 export class ReagentsController {
   constructor(private readonly reagents: ReagentsService) {}
 
   // Any authenticated user may list and view: the reagents screen is for
-  // everyone, only management is restricted.
+  // everyone, only management is restricted. `includeInactive` is the one
+  // parameter that is not open (spec §6.1: ADMIN only).
   @Get()
   list(
     @Query() query: ListReagentsQueryDto,
+    @CurrentUser() actor: AuthenticatedUser,
   ): Promise<PaginatedResponse<ReagentDto>> {
+    assertIncludeInactiveAllowed(query.includeInactive, actor.role);
     return this.reagents.list(query);
   }
 

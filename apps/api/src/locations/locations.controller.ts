@@ -16,16 +16,21 @@ import { ListLocationsQueryDto } from './dto/list-locations-query.dto';
 import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../common/decorators/current-user.decorator';
+import { assertIncludeInactiveAllowed } from '../common/authorization/assert-include-inactive-allowed';
 
 @Controller('locations')
 export class LocationsController {
   constructor(private readonly locations: LocationsService) {}
 
-  // Any authenticated user may list: the batch form needs the location picker.
+  // Any authenticated user may list: the batch form needs the location
+  // picker. `includeInactive` is the one parameter that is not open (spec
+  // §6.1: ADMIN only).
   @Get()
   list(
     @Query() query: ListLocationsQueryDto,
+    @CurrentUser() actor: AuthenticatedUser,
   ): Promise<PaginatedResponse<LocationDto>> {
+    assertIncludeInactiveAllowed(query.includeInactive, actor.role);
     return this.locations.list(query);
   }
 

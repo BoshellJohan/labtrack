@@ -16,6 +16,7 @@ import { ListBatchesQueryDto } from './dto/list-batches-query.dto';
 import { Roles } from '../common/decorators/roles.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../common/decorators/current-user.decorator';
+import { assertIncludeInactiveAllowed } from '../common/authorization/assert-include-inactive-allowed';
 
 // GET/POST hang off the reagent path as a sub-resource (spec §5.1).
 @Controller('reagents')
@@ -23,12 +24,15 @@ export class ReagentBatchesController {
   constructor(private readonly batches: BatchesService) {}
 
   // Any authenticated user may list a reagent's batches: they are the ones
-  // who will register consumption against them later.
+  // who will register consumption against them later. `includeInactive` is
+  // the one parameter that is not open (spec §6.1: ADMIN only).
   @Get(':id/batches')
   listForReagent(
     @Param('id', ParseUUIDPipe) id: string,
     @Query() query: ListBatchesQueryDto,
+    @CurrentUser() actor: AuthenticatedUser,
   ): Promise<PaginatedResponse<ReagentBatchDto>> {
+    assertIncludeInactiveAllowed(query.includeInactive, actor.role);
     return this.batches.listForReagent(id, query);
   }
 
