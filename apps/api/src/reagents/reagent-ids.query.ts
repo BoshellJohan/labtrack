@@ -31,9 +31,16 @@ function buildReagentWhere(
 
   // Both of these ask about a reagent's *batches*, so they are `some` clauses
   // over active batches — a reagent qualifies when at least one batch does.
-  // They are separate `some` clauses on purpose: combining them into one would
-  // demand a single batch that is both expiring and low, which is a narrower
-  // question than either filter asks.
+  //
+  // `expiringBefore` merges into the same `some` as `locationId` above: with
+  // both set, they demand one batch that is both in that location and
+  // expiring soon — the question a lab asks while standing at a shelf.
+  //
+  // `lowStock` deliberately does NOT join that `some`; it goes into its own
+  // `where.AND` entry below. A reagent whose nearly-empty batch and whose
+  // expiring batch are two different batches must still match `lowStock` —
+  // folding it into the shared `some` would wrongly require a single batch
+  // to satisfy every active filter at once.
   if (query.expiringBefore) {
     where.batches = {
       ...(where.batches ?? {}),

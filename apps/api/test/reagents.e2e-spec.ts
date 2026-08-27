@@ -458,6 +458,39 @@ describe('Reagents (e2e)', () => {
     expect(page.data.map((r) => r.name)).toEqual(['Queda poco']);
   });
 
+  it('includes a reagent whose batch stock exactly equals the lowStock threshold', async () => {
+    const admin = await prisma.user.findUniqueOrThrow({
+      where: { username: 'admin' },
+    });
+    const location = await prisma.location.create({
+      data: { name: 'Estante G2', madeById: admin.id },
+    });
+    const exact = await prisma.reagent.create({
+      data: { name: 'Queda exacto', casNumber: '67-64-1', madeById: admin.id },
+    });
+    await prisma.reagentBatch.create({
+      data: {
+        reagentId: exact.id,
+        locationId: location.id,
+        lotNumber: 'X-1',
+        entryDate: new Date('2026-01-01T00:00:00.000Z'),
+        initialStock: '100',
+        currentStock: '2.5000',
+        unit: 'L',
+        madeById: admin.id,
+      },
+    });
+
+    const token = await tokenFor('admin');
+    const response = await request(app.getHttpServer())
+      .get('/reagents?lowStock=2.5000')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    const page = body<PaginatedResponse<ReagentDto>>(response);
+    expect(page.data.map((r) => r.name)).toEqual(['Queda exacto']);
+  });
+
   it('rejects a lowStock that is not a decimal string', async () => {
     const token = await tokenFor('admin');
     await request(app.getHttpServer())
