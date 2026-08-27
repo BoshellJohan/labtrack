@@ -1,4 +1,8 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import {
   buildPaginatedResponse,
   ConsumptionDto,
@@ -10,6 +14,7 @@ import { runInTransaction } from '../common/prisma/transaction';
 import { toConsumptionDto } from '../common/mappers/consumption.mapper';
 import { CreateConsumptionDto } from './dto/create-consumption.dto';
 import { ListConsumptionsQueryDto } from './dto/list-consumptions-query.dto';
+import { VoidConsumptionDto } from './dto/void-consumption.dto';
 
 // Shared by create, list and void so all three produce the exact shape the
 // mapper's type demands.
@@ -128,5 +133,45 @@ export class ConsumptionsService {
       query.page,
       query.pageSize,
     );
+  }
+
+  async void(
+    id: string,
+    dto: VoidConsumptionDto,
+    actorId: string,
+  ): Promise<ConsumptionDto> {
+    return runInTransaction(this.prisma, async (tx) => {
+      const current = await tx.consumption.findUnique({ where: { id } });
+      if (!current) {
+        throw new NotFoundException('Consumption not found');
+      }
+      // Read-then-write again, and the reason this needs the transaction as
+      // much as `create` does: two concurrent voids of the same consumption
+      // could each read it as active and each return the quantity, inflating
+      // the batch by twice what was consumed.
+      if (!current.active) {
+        throw new BadRequestException('This consumption is already voided');
+      }
+
+      const consumption = await tx.consumption.update({
+        where: { id },
+        data: {
+          active: false,
+          voidReason: dto.voidReason,
+          voidedById: actorId,
+          voidedAt: new Date(),
+        },
+        include: WITH_RELATIONS,
+      });
+
+      // The exact reverse of `create`'s decrement, and in Postgres for the
+      // same reason.
+      await tx.reagentBatch.update({
+        where: { id: current.batchId },
+        data: { currentStock: { increment: current.quantity } },
+      });
+
+      return toConsumptionDto(consumption);
+    });
   }
 }

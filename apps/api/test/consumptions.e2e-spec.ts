@@ -358,4 +358,130 @@ describe('Consumptions (e2e)', () => {
 
     expect(body<PaginatedResponse<ConsumptionDto>>(response).total).toBe(3);
   });
+
+  it('rejects a sortBy value outside the whitelist', async () => {
+    const token = await tokenFor('ana');
+    await request(app.getHttpServer())
+      .get('/consumptions?sortBy=id')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(400);
+  });
+
+  it('returns the quantity to the batch and records who voided it and why', async () => {
+    const token = await tokenFor('ana');
+    const created = body<ConsumptionDto>(
+      await request(app.getHttpServer())
+        .post('/consumptions')
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          batchId,
+          quantity: '0.3000',
+          consumedAt: '2026-08-01T10:00:00.000Z',
+          purpose: 'Prueba',
+        })
+        .expect(201),
+    );
+
+    const adminToken = await tokenFor('admin');
+    const response = await request(app.getHttpServer())
+      .patch(`/consumptions/${created.id}/void`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ voidReason: 'Registrado por error' })
+      .expect(200);
+
+    const dto = body<ConsumptionDto>(response);
+    expect(dto.active).toBe(false);
+    expect(dto.voidReason).toBe('Registrado por error');
+    expect(dto.voidedByName).toBe('Admin');
+    expect(dto.voidedAt).not.toBeNull();
+
+    const batch = await prisma.reagentBatch.findUniqueOrThrow({
+      where: { id: batchId },
+    });
+    expect(batch.currentStock.toString()).toBe('100');
+  });
+
+  it('refuses to void for a non-admin, and leaves the stock consumed', async () => {
+    const token = await tokenFor('ana');
+    const created = body<ConsumptionDto>(
+      await request(app.getHttpServer())
+        .post('/consumptions')
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          batchId,
+          quantity: '1',
+          consumedAt: '2026-08-01T10:00:00.000Z',
+          purpose: 'Prueba',
+        })
+        .expect(201),
+    );
+
+    await request(app.getHttpServer())
+      .patch(`/consumptions/${created.id}/void`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ voidReason: 'Quiero anularlo' })
+      .expect(403);
+
+    const batch = await prisma.reagentBatch.findUniqueOrThrow({
+      where: { id: batchId },
+    });
+    expect(batch.currentStock.toString()).toBe('99');
+  });
+
+  it('requires a justification', async () => {
+    const token = await tokenFor('ana');
+    const created = body<ConsumptionDto>(
+      await request(app.getHttpServer())
+        .post('/consumptions')
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          batchId,
+          quantity: '1',
+          consumedAt: '2026-08-01T10:00:00.000Z',
+          purpose: 'Prueba',
+        })
+        .expect(201),
+    );
+
+    const adminToken = await tokenFor('admin');
+    await request(app.getHttpServer())
+      .patch(`/consumptions/${created.id}/void`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ voidReason: '   ' })
+      .expect(400);
+  });
+
+  it('does not return the stock twice when voiding an already-voided consumption', async () => {
+    const token = await tokenFor('ana');
+    const created = body<ConsumptionDto>(
+      await request(app.getHttpServer())
+        .post('/consumptions')
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          batchId,
+          quantity: '5',
+          consumedAt: '2026-08-01T10:00:00.000Z',
+          purpose: 'Prueba',
+        })
+        .expect(201),
+    );
+
+    const adminToken = await tokenFor('admin');
+    await request(app.getHttpServer())
+      .patch(`/consumptions/${created.id}/void`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ voidReason: 'Primera anulación' })
+      .expect(200);
+
+    await request(app.getHttpServer())
+      .patch(`/consumptions/${created.id}/void`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ voidReason: 'Segunda anulación' })
+      .expect(400);
+
+    const batch = await prisma.reagentBatch.findUniqueOrThrow({
+      where: { id: batchId },
+    });
+    expect(batch.currentStock.toString()).toBe('100');
+  });
 });

@@ -1,11 +1,22 @@
-import { Body, Controller, Get, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Patch,
+  Post,
+  Query,
+} from '@nestjs/common';
 import { ConsumptionDto, PaginatedResponse } from '@labtrack/shared';
 import { ConsumptionsService } from './consumptions.service';
 import { CreateConsumptionDto } from './dto/create-consumption.dto';
 import { ListConsumptionsQueryDto } from './dto/list-consumptions-query.dto';
+import { VoidConsumptionDto } from './dto/void-consumption.dto';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../common/decorators/current-user.decorator';
 import { assertIncludeInactiveAllowed } from '../common/authorization/assert-include-inactive-allowed';
+import { Roles } from '../common/decorators/roles.decorator';
 
 @Controller('consumptions')
 export class ConsumptionsController {
@@ -32,5 +43,15 @@ export class ConsumptionsController {
     // hiding a checkbox.
     assertIncludeInactiveAllowed(query.includeVoided, actor.role);
     return this.consumptions.list(query);
+  }
+
+  @Patch(':id/void')
+  @Roles('ADMIN')
+  voidConsumption(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: VoidConsumptionDto,
+    @CurrentUser() actor: AuthenticatedUser,
+  ): Promise<ConsumptionDto> {
+    return this.consumptions.void(id, dto, actor.id);
   }
 }
