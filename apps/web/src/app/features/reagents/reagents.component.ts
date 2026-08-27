@@ -300,6 +300,17 @@ export class ReagentsComponent implements OnInit {
   }
 
   ngOnInit(): void {
+    // ReagentsStore is providedIn: 'root', so its filters survive this
+    // component being destroyed and recreated (navigating away and back).
+    // These controls are constructed fresh every time, so without this they
+    // would show empty next to a table the store is still filtering —
+    // seed them from the store so what the user sees matches what is
+    // actually being applied, with { emitEvent: false } so this doesn't
+    // loop back into another setFilters/reload.
+    this.nameControl.setValue(this.store.nameFilter(), { emitEvent: false });
+    this.casNumberControl.setValue(this.store.casNumberFilter(), { emitEvent: false });
+    this.locationControl.setValue(this.store.locationIdFilter(), { emitEvent: false });
+
     this.store.reload();
     // listActive() bypasses LocationsStore's own paginated view state: a
     // setPageSize() call here previously leaked into /ubicaciones, since

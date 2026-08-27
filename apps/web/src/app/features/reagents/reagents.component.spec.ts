@@ -5,6 +5,7 @@ import { MatDialog } from '@angular/material/dialog';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { vi } from 'vitest';
 import { ReagentsComponent } from './reagents.component';
+import { ReagentsStore } from './reagents.store';
 import { AuthService } from '../../core/auth/auth.service';
 import { API_URL } from '../../core/api/api.config';
 
@@ -128,5 +129,48 @@ describe('ReagentsComponent', () => {
     };
 
     expect(component.expiryStatus(batch)).not.toBe('expired');
+  });
+
+  it('seeds the filter inputs from a filter the root-scoped store retained across navigation', () => {
+    // ReagentsStore is providedIn: 'root', so its filters survive the
+    // component being destroyed and recreated (navigating away and back).
+    // Set a filter on the store *before* the component exists, the way it
+    // would already be set on a second visit to the screen.
+    TestBed.configureTestingModule({
+      imports: [ReagentsComponent],
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: API_URL, useValue: 'http://api.test' },
+        {
+          provide: AuthService,
+          useValue: { isAdmin: () => false, currentUser: () => null, isAuthenticated: () => true },
+        },
+        { provide: MatDialog, useValue: {} },
+        { provide: MatSnackBar, useValue: { open: () => undefined } },
+      ],
+    });
+
+    const store = TestBed.inject(ReagentsStore);
+    http = TestBed.inject(HttpTestingController);
+    store.setCasNumber('7647-01-0');
+    // Settle the filter's own reload (the first visit to the screen) before
+    // the component — the second visit — is created, so only one request is
+    // in flight at a time.
+    http.expectOne((req) => req.url === 'http://api.test/reagents').flush(reagentsPage(baseReagent));
+
+    fixture = TestBed.createComponent(ReagentsComponent);
+    fixture.detectChanges();
+
+    const reagentsRequest = http.expectOne((req) => req.url === 'http://api.test/reagents');
+    // The request the retained filter drives must match what the input
+    // shows — this is the request setCasNumber() above already queued.
+    expect(reagentsRequest.request.params.get('casNumber')).toBe('7647-01-0');
+    reagentsRequest.flush(reagentsPage(baseReagent));
+    http.expectOne((req) => req.url === 'http://api.test/locations').flush(emptyLocationsPage);
+
+    // The screen must show what it is actually filtering by: an empty box
+    // next to a filtered table, with no way to clear it, is the defect.
+    expect(fixture.componentInstance.casNumberControl.value).toBe('7647-01-0');
   });
 });
