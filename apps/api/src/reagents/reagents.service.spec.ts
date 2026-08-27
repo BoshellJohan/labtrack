@@ -20,7 +20,7 @@ function buildService(ids: { id: string }[] = [], rows: unknown[] = []) {
       count: jest.fn().mockResolvedValue(ids.length),
       create: jest.fn(),
       update: jest.fn(),
-      findUniqueOrThrow: jest.fn(),
+      findFirst: jest.fn(),
     },
     $transaction: jest.fn((ops: unknown[]) =>
       Promise.all(ops as Promise<unknown>[]),
@@ -83,6 +83,69 @@ describe('ReagentsService.list', () => {
   });
 });
 
+describe('ReagentsService.findOne', () => {
+  function buildFindOneService(reagent: unknown) {
+    const prisma = {
+      reagent: {
+        findFirst: jest.fn().mockResolvedValue(reagent),
+      },
+    };
+    return { service: new ReagentsService(prisma as never), prisma };
+  }
+
+  it('filters to active reagents for a non-admin', async () => {
+    const { service, prisma } = buildFindOneService({
+      id: 'r1',
+      name: 'Acetona',
+      casNumber: '67-64-1',
+      reference: null,
+      description: null,
+      dataSheetUrl: null,
+      active: true,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      batches: [],
+    });
+
+    await service.findOne('r1', false);
+
+    expect(prisma.reagent.findFirst).toHaveBeenCalledWith({
+      where: { id: 'r1', active: true },
+      include: { batches: true },
+    });
+  });
+
+  it('does not filter on active for an admin, and returns an inactive reagent', async () => {
+    const { service, prisma } = buildFindOneService({
+      id: 'r1',
+      name: 'Retirado',
+      casNumber: '67-64-1',
+      reference: null,
+      description: null,
+      dataSheetUrl: null,
+      active: false,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      batches: [],
+    });
+
+    const result = await service.findOne('r1', true);
+
+    expect(prisma.reagent.findFirst).toHaveBeenCalledWith({
+      where: { id: 'r1' },
+      include: { batches: true },
+    });
+    expect(result.active).toBe(false);
+  });
+
+  it('throws NotFoundException when findFirst returns nothing', async () => {
+    const { service } = buildFindOneService(null);
+    await expect(service.findOne('missing', false)).rejects.toThrow(
+      'Reagent not found',
+    );
+  });
+});
+
 describe('ReagentsService.deactivate', () => {
   it('deactivates the reagent and its batches in one transaction', async () => {
     const tx = {
@@ -96,7 +159,7 @@ describe('ReagentsService.deactivate', () => {
         fn(tx),
       ),
       reagent: {
-        findUniqueOrThrow: jest.fn().mockResolvedValue({
+        findFirst: jest.fn().mockResolvedValue({
           id: 'r1',
           name: 'Acetona',
           casNumber: '67-64-1',

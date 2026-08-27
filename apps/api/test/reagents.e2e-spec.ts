@@ -546,4 +546,46 @@ describe('Reagents (e2e)', () => {
     const page = body<PaginatedResponse<ReagentDto>>(response);
     expect(page.data.map((r) => r.name)).toEqual(['Acetona']);
   });
+
+  it('hides a deactivated reagent from a non-admin who knows its id', async () => {
+    const admin = await prisma.user.findUniqueOrThrow({
+      where: { username: 'admin' },
+    });
+    const reagent = await prisma.reagent.create({
+      data: {
+        name: 'Retirado',
+        casNumber: '67-64-1',
+        madeById: admin.id,
+        active: false,
+      },
+    });
+
+    const token = await tokenFor('ana');
+    await request(app.getHttpServer())
+      .get(`/reagents/${reagent.id}`)
+      .set('Authorization', `Bearer ${token}`)
+      .expect(404);
+  });
+
+  it('still shows a deactivated reagent to an admin', async () => {
+    const admin = await prisma.user.findUniqueOrThrow({
+      where: { username: 'admin' },
+    });
+    const reagent = await prisma.reagent.create({
+      data: {
+        name: 'Retirado',
+        casNumber: '67-64-1',
+        madeById: admin.id,
+        active: false,
+      },
+    });
+
+    const token = await tokenFor('admin');
+    const response = await request(app.getHttpServer())
+      .get(`/reagents/${reagent.id}`)
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    expect(body<ReagentDto>(response).active).toBe(false);
+  });
 });

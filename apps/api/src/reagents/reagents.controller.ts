@@ -35,8 +35,11 @@ export class ReagentsController {
   }
 
   @Get(':id')
-  findOne(@Param('id', ParseUUIDPipe) id: string): Promise<ReagentDto> {
-    return this.reagents.findOne(id);
+  findOne(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() actor: AuthenticatedUser,
+  ): Promise<ReagentDto> {
+    return this.reagents.findOne(id, actor.role === 'ADMIN');
   }
 
   @Post()
