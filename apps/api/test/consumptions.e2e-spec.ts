@@ -1,6 +1,6 @@
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
-import { ConsumptionDto } from '@labtrack/shared';
+import { ConsumptionDto, PaginatedResponse } from '@labtrack/shared';
 import { createTestApp } from './utils/test-app';
 import { body } from './utils/body';
 import { PrismaService } from '../src/prisma/prisma.service';
@@ -11,6 +11,7 @@ describe('Consumptions (e2e)', () => {
   let prisma: PrismaService;
   let passwords: PasswordService;
   let batchId: string;
+  let reagentId: string;
 
   beforeAll(async () => {
     ({ app, prisma } = await createTestApp());
@@ -71,7 +72,44 @@ describe('Consumptions (e2e)', () => {
       },
     });
     batchId = batch.id;
+    reagentId = reagent.id;
   });
+
+  async function seedConsumptions(): Promise<void> {
+    const admin = await prisma.user.findUniqueOrThrow({
+      where: { username: 'admin' },
+    });
+    // Inserted out of chronological order on purpose: a "newest first"
+    // assertion against insertion order alone (no real `orderBy`) would pass
+    // by accident if these went in sequentially.
+    await prisma.consumption.create({
+      data: {
+        batchId,
+        quantity: '1.0000',
+        consumedAt: new Date('2026-08-02'),
+        purpose: 'Segundo',
+        madeById: admin.id,
+      },
+    });
+    await prisma.consumption.create({
+      data: {
+        batchId,
+        quantity: '1.0000',
+        consumedAt: new Date('2026-08-03'),
+        purpose: 'Tercero',
+        madeById: admin.id,
+      },
+    });
+    await prisma.consumption.create({
+      data: {
+        batchId,
+        quantity: '1.0000',
+        consumedAt: new Date('2026-08-01'),
+        purpose: 'Primero',
+        madeById: admin.id,
+      },
+    });
+  }
 
   async function tokenFor(username: string): Promise<string> {
     const response = await request(app.getHttpServer())
@@ -218,5 +256,106 @@ describe('Consumptions (e2e)', () => {
         purpose: '   ',
       })
       .expect(400);
+  });
+
+  it('returns consumptions newest first by default', async () => {
+    await seedConsumptions();
+    const token = await tokenFor('ana');
+    const response = await request(app.getHttpServer())
+      .get('/consumptions')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    const page = body<PaginatedResponse<ConsumptionDto>>(response);
+    expect(page.data.map((c) => c.purpose)).toEqual([
+      'Tercero',
+      'Segundo',
+      'Primero',
+    ]);
+  });
+
+  it('excludes voided consumptions from a normal listing', async () => {
+    await seedConsumptions();
+    const first = await prisma.consumption.findFirstOrThrow({
+      where: { purpose: 'Primero' },
+    });
+    await prisma.consumption.update({
+      where: { id: first.id },
+      data: { active: false, voidReason: 'Error', voidedAt: new Date() },
+    });
+
+    const token = await tokenFor('ana');
+    const response = await request(app.getHttpServer())
+      .get('/consumptions')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    const page = body<PaginatedResponse<ConsumptionDto>>(response);
+    expect(page.data.map((c) => c.purpose)).toEqual(['Tercero', 'Segundo']);
+    expect(page.total).toBe(2);
+  });
+
+  it('lets an admin see voided consumptions with includeVoided', async () => {
+    await seedConsumptions();
+    const first = await prisma.consumption.findFirstOrThrow({
+      where: { purpose: 'Primero' },
+    });
+    await prisma.consumption.update({
+      where: { id: first.id },
+      data: { active: false, voidReason: 'Error', voidedAt: new Date() },
+    });
+
+    const token = await tokenFor('admin');
+    const response = await request(app.getHttpServer())
+      .get('/consumptions?includeVoided=true')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    expect(body<PaginatedResponse<ConsumptionDto>>(response).total).toBe(3);
+  });
+
+  it('refuses includeVoided for a non-admin', async () => {
+    const token = await tokenFor('ana');
+    await request(app.getHttpServer())
+      .get('/consumptions?includeVoided=true')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(403);
+  });
+
+  it('filters by a date range on consumedAt', async () => {
+    await seedConsumptions();
+    const token = await tokenFor('ana');
+    const response = await request(app.getHttpServer())
+      .get(
+        '/consumptions?from=2026-08-02T00:00:00.000Z&to=2026-08-02T23:59:59.999Z',
+      )
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    const page = body<PaginatedResponse<ConsumptionDto>>(response);
+    expect(page.data.map((c) => c.purpose)).toEqual(['Segundo']);
+  });
+
+  it('filters by a partial purpose, case-insensitively', async () => {
+    await seedConsumptions();
+    const token = await tokenFor('ana');
+    const response = await request(app.getHttpServer())
+      .get('/consumptions?purpose=terc')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    const page = body<PaginatedResponse<ConsumptionDto>>(response);
+    expect(page.data.map((c) => c.purpose)).toEqual(['Tercero']);
+  });
+
+  it('filters by reagent across all of that reagent batches', async () => {
+    await seedConsumptions();
+    const token = await tokenFor('ana');
+    const response = await request(app.getHttpServer())
+      .get(`/consumptions?reagentId=${reagentId}`)
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    expect(body<PaginatedResponse<ConsumptionDto>>(response).total).toBe(3);
   });
 });

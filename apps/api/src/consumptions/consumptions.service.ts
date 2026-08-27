@@ -1,9 +1,15 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { ConsumptionDto } from '@labtrack/shared';
+import {
+  buildPaginatedResponse,
+  ConsumptionDto,
+  PaginatedResponse,
+} from '@labtrack/shared';
+import { Prisma } from '../prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { runInTransaction } from '../common/prisma/transaction';
 import { toConsumptionDto } from '../common/mappers/consumption.mapper';
 import { CreateConsumptionDto } from './dto/create-consumption.dto';
+import { ListConsumptionsQueryDto } from './dto/list-consumptions-query.dto';
 
 // Shared by create, list and void so all three produce the exact shape the
 // mapper's type demands.
@@ -70,5 +76,57 @@ export class ConsumptionsService {
 
       return toConsumptionDto(consumption);
     });
+  }
+
+  async list(
+    query: ListConsumptionsQueryDto,
+  ): Promise<PaginatedResponse<ConsumptionDto>> {
+    const where: Prisma.ConsumptionWhereInput = {};
+
+    if (!query.includeVoided) {
+      where.active = true;
+    }
+    if (query.batchId) {
+      where.batchId = query.batchId;
+    }
+    if (query.reagentId) {
+      // A consumption belongs to a batch, and a batch to a reagent: filtering
+      // by reagent means "any of that reagent's batches".
+      where.batch = { reagentId: query.reagentId };
+    }
+    if (query.madeById) {
+      where.madeById = query.madeById;
+    }
+    if (query.purpose) {
+      where.purpose = { contains: query.purpose, mode: 'insensitive' };
+    }
+    if (query.from || query.to) {
+      where.consumedAt = {
+        ...(query.from ? { gte: new Date(query.from) } : {}),
+        ...(query.to ? { lte: new Date(query.to) } : {}),
+      };
+    }
+
+    // Count and rows in one transaction with the same `where`, so the
+    // paginator can never show a total that disagrees with the page. The `id`
+    // tie-break makes the order deterministic when two rows share a
+    // `consumedAt`, which is common when several are logged in one sitting.
+    const [data, total] = await this.prisma.$transaction([
+      this.prisma.consumption.findMany({
+        where,
+        include: WITH_RELATIONS,
+        orderBy: [{ [query.sortBy]: query.sortOrder }, { id: 'asc' }],
+        skip: query.skip,
+        take: query.pageSize,
+      }),
+      this.prisma.consumption.count({ where }),
+    ]);
+
+    return buildPaginatedResponse(
+      data.map(toConsumptionDto),
+      total,
+      query.page,
+      query.pageSize,
+    );
   }
 }
