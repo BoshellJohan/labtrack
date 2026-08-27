@@ -99,6 +99,22 @@ describe('ConsumptionsComponent', () => {
     expect(text).not.toContain(CONSUMPTIONS_ES.voidAction);
   });
 
+  it('hides the "incluir anulados" filter from a non-admin', () => {
+    // The API's RolesGuard rejects includeVoided=true for a non-admin with
+    // 403 (assertIncludeInactiveAllowed): offering the checkbox would just
+    // let them trigger that failure.
+    createComponent(false);
+    fixture.detectChanges();
+    http.expectOne((r) => r.url === 'http://api.test/reagents').flush(emptyReagentsPage());
+    http
+      .expectOne((r) => r.url === 'http://api.test/consumptions')
+      .flush(consumptionsPage(activeConsumption));
+    fixture.detectChanges();
+
+    const text = fixture.nativeElement.textContent as string;
+    expect(text).not.toContain(CONSUMPTIONS_ES.filters.includeVoided);
+  });
+
   it('shows who voided a consumption and why, not just that it is voided', () => {
     createComponent(true);
     fixture.detectChanges();

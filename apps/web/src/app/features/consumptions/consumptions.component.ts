@@ -83,7 +83,14 @@ import { ApiService } from '../../core/api/api.service';
           <mat-datepicker #toPicker />
         </mat-form-field>
 
-        <mat-checkbox formControlName="includeVoided">{{ text.filters.includeVoided }}</mat-checkbox>
+        @if (auth.isAdmin()) {
+          <!-- The API's RolesGuard rejects includeVoided=true for a non-admin
+               with 403 (assertIncludeInactiveAllowed): hide the control
+               rather than let a non-admin tick it and get a silent empty
+               table that looks like "no voided records" instead of "not
+               permitted". -->
+          <mat-checkbox formControlName="includeVoided">{{ text.filters.includeVoided }}</mat-checkbox>
+        }
       </form>
 
       @if (store.loading()) {
