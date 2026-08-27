@@ -1,6 +1,7 @@
 import { Prisma } from '../prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ListReagentsQueryDto } from './dto/list-reagents-query.dto';
+import { normalizeForSearch } from '../common/text/normalize';
 
 /**
  * Translates the simple filters into a Prisma `where`. Internal to this file:
@@ -15,7 +16,10 @@ function buildReagentWhere(
     where.active = true;
   }
   if (query.name) {
-    where.name = { contains: query.name, mode: 'insensitive' };
+    // Both sides normalized: the column by Postgres, the term by us. `mode`
+    // is gone because the column is already lowercased — asking for
+    // case-insensitivity here would defeat the trigram index.
+    where.nameNormalized = { contains: normalizeForSearch(query.name) };
   }
   if (query.casNumber) {
     where.casNumber = query.casNumber;

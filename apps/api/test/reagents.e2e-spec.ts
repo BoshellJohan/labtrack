@@ -284,4 +284,44 @@ describe('Reagents (e2e)', () => {
       .set('Authorization', `Bearer ${await tokenFor('admin')}`)
       .expect(404);
   });
+
+  it('finds an accented name when the search term has no accents', async () => {
+    const admin = await prisma.user.findUniqueOrThrow({
+      where: { username: 'admin' },
+    });
+    await prisma.reagent.create({
+      data: {
+        name: 'Ácido clorhídrico',
+        casNumber: '7647-01-0',
+        madeById: admin.id,
+      },
+    });
+
+    const token = await tokenFor('admin');
+    const response = await request(app.getHttpServer())
+      .get('/reagents?name=acido')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    const page = body<PaginatedResponse<ReagentDto>>(response);
+    expect(page.data.map((r) => r.name)).toEqual(['Ácido clorhídrico']);
+  });
+
+  it('still finds an unaccented name when the search term is accented', async () => {
+    const admin = await prisma.user.findUniqueOrThrow({
+      where: { username: 'admin' },
+    });
+    await prisma.reagent.create({
+      data: { name: 'Acetona', casNumber: '67-64-1', madeById: admin.id },
+    });
+
+    const token = await tokenFor('admin');
+    const response = await request(app.getHttpServer())
+      .get('/reagents?name=acetóna')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    const page = body<PaginatedResponse<ReagentDto>>(response);
+    expect(page.data.map((r) => r.name)).toEqual(['Acetona']);
+  });
 });

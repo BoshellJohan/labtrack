@@ -49,12 +49,12 @@ describe('ReagentsService.list', () => {
     expect(hydrateCall[0]).toMatchObject({ where: { id: { in: ['r1'] } } });
   });
 
-  it('filters by name, case-insensitively', async () => {
+  it('filters by name against the accent- and case-normalized column', async () => {
     const { service, prisma } = buildService();
-    await service.list({ ...baseQuery, name: 'aceto' } as never);
+    await service.list({ ...baseQuery, name: 'Acetóna' } as never);
     expect(prisma.reagent.findMany.mock.calls[0][0].where).toMatchObject({
       active: true,
-      name: { contains: 'aceto', mode: 'insensitive' },
+      nameNormalized: { contains: 'acetona' },
     });
   });
 
