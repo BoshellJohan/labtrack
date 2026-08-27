@@ -1,4 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { LOCALE_ID } from '@angular/core';
+import { registerLocaleData } from '@angular/common';
+import localeEs from '@angular/common/locales/es';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { MatDialog } from '@angular/material/dialog';
@@ -8,6 +11,7 @@ import { ReagentsComponent } from './reagents.component';
 import { ReagentsStore } from './reagents.store';
 import { AuthService } from '../../core/auth/auth.service';
 import { API_URL } from '../../core/api/api.config';
+import type { ReagentBatchDto } from '@labtrack/shared';
 
 const emptyLocationsPage = {
   data: [],
@@ -129,6 +133,143 @@ describe('ReagentsComponent', () => {
     };
 
     expect(component.expiryStatus(batch)).not.toBe('expired');
+  });
+
+  it('renders dates in Spanish day/month order, not the en-US default', () => {
+    // The app provides LOCALE_ID at the root; the TestBed does not inherit
+    // that, so it is provided here the same way. Without this test the
+    // locale registration in app.config.ts is unverified: the suite would
+    // keep passing if someone deleted it, and the failure would first appear
+    // to a user reading 9/10/26 as 9 October on an expiry column.
+    registerLocaleData(localeEs);
+    TestBed.configureTestingModule({
+      imports: [ReagentsComponent],
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: API_URL, useValue: 'http://api.test' },
+        {
+          provide: AuthService,
+          useValue: { isAdmin: () => false, currentUser: () => null, isAuthenticated: () => true },
+        },
+        { provide: MatDialog, useValue: {} },
+        { provide: MatSnackBar, useValue: { open: () => undefined } },
+        { provide: LOCALE_ID, useValue: 'es' },
+      ],
+    });
+
+    fixture = TestBed.createComponent(ReagentsComponent);
+    http = TestBed.inject(HttpTestingController);
+    fixture.detectChanges();
+
+    http
+      .expectOne((req) => req.url === 'http://api.test/reagents')
+      .flush(
+        reagentsPage({
+          ...baseReagent,
+          stockByUnit: [{ unit: 'ML', total: '500.0000' }],
+        }),
+      );
+    http.expectOne((req) => req.url === 'http://api.test/locations').flush(emptyLocationsPage);
+    fixture.detectChanges();
+
+    // Expand the reagent's batches, following the arrangement the existing
+    // stock-column test uses, so the entryDate — the date rendered with the
+    // `date` pipe — actually appears in the DOM.
+    fixture.componentInstance.toggleBatches(baseReagent as never);
+    fixture.detectChanges();
+
+    http
+      .expectOne((req) => req.url === 'http://api.test/reagents/reagent-1/batches')
+      .flush({
+        data: [
+          {
+            id: 'batch-1',
+            reagentId: 'reagent-1',
+            reagentName: 'Ácido clorhídrico',
+            lotNumber: 'L-1',
+            entryDate: '2026-08-01T00:00:00.000Z',
+            expirationDate: '2026-09-10T00:00:00.000Z',
+            initialStock: '500.0000',
+            currentStock: '500.0000',
+            unit: 'ML',
+            locationId: 'location-1',
+            locationName: 'Estante A1',
+            active: true,
+            createdAt: '2026-08-01T00:00:00.000Z',
+            updatedAt: '2026-08-01T00:00:00.000Z',
+          },
+        ],
+        total: 1,
+        page: 1,
+        pageSize: 20,
+        totalPages: 1,
+      });
+    fixture.detectChanges();
+
+    const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
+    expect(text).toContain('1/8/26');
+    expect(text).not.toContain('8/1/26');
+  });
+
+  describe('expiry threshold boundaries', () => {
+    const batchFixture: ReagentBatchDto = {
+      id: 'batch-1',
+      reagentId: 'reagent-1',
+      reagentName: 'Ácido clorhídrico',
+      lotNumber: 'L-1',
+      entryDate: '2026-08-01T00:00:00.000Z',
+      expirationDate: '2026-09-10T00:00:00.000Z',
+      initialStock: '500.0000',
+      currentStock: '500.0000',
+      unit: 'ML',
+      locationId: 'location-1',
+      locationName: 'Estante A1',
+      active: true,
+      createdAt: '2026-08-01T00:00:00.000Z',
+      updatedAt: '2026-08-01T00:00:00.000Z',
+    };
+    let componentUnderTest: ReagentsComponent;
+
+    beforeEach(() => {
+      vi.useFakeTimers();
+      createComponent({
+        ...baseReagent,
+        stockByUnit: [{ unit: 'ML', total: '500.0000' }],
+      });
+      componentUnderTest = fixture.componentInstance;
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('marks a lot as expired the day after its expiration date', () => {
+      vi.setSystemTime(new Date('2026-09-11T00:05:00.000Z'));
+      const status = componentUnderTest.expiryStatus({
+        ...batchFixture,
+        expirationDate: '2026-09-10T00:00:00.000Z',
+      });
+      expect(status).toBe('expired');
+    });
+
+    it('warns exactly at the 30-day threshold and not a day earlier', () => {
+      vi.setSystemTime(new Date('2026-08-11T00:00:00.000Z'));
+      expect(
+        componentUnderTest.expiryStatus({
+          ...batchFixture,
+          expirationDate: '2026-09-10T00:00:00.000Z',
+        }),
+      ).toBe('warning');
+
+      vi.setSystemTime(new Date('2026-08-10T00:00:00.000Z'));
+      expect(
+        componentUnderTest.expiryStatus({
+          ...batchFixture,
+          expirationDate: '2026-09-10T00:00:00.000Z',
+        }),
+      ).toBe('ok');
+    });
   });
 
   it('seeds the filter inputs from a filter the root-scoped store retained across navigation', () => {
