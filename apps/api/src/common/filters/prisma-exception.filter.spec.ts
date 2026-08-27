@@ -40,4 +40,24 @@ describe('PrismaExceptionFilter', () => {
       expect.objectContaining({ code: 'NOT_FOUND' }),
     );
   });
+
+  // Under Serializable isolation Postgres does not block a conflicting
+  // writer; it aborts one with SQLSTATE 40001, which Prisma surfaces as
+  // P2034. Without this case it falls through to the default 500, turning an
+  // expected concurrent-write outcome into a reported server crash.
+  it('maps a serialization write conflict to 409', () => {
+    const json = jest.fn();
+    const status = jest.fn().mockReturnValue({ json });
+    const error = new Prisma.PrismaClientKnownRequestError('write conflict', {
+      code: 'P2034',
+      clientVersion: '5.0.0',
+    });
+
+    new PrismaExceptionFilter().catch(error, hostWith(json, status));
+
+    expect(status).toHaveBeenCalledWith(HttpStatus.CONFLICT);
+    expect(json).toHaveBeenCalledWith(
+      expect.objectContaining({ code: 'WRITE_CONFLICT' }),
+    );
+  });
 });

@@ -101,9 +101,38 @@ describe('Consumptions (e2e)', () => {
     const batch = await prisma.reagentBatch.findUniqueOrThrow({
       where: { id: batchId },
     });
-    // The database does the arithmetic, so this would fail against a Float
-    // column: 100 - 0.3 in binary floating point is not exactly 99.7.
+    // This value is not itself discriminating: 100 - 0.3 happens to be exact
+    // in IEEE-754 too. It's here because it's the number a human reads in the
+    // report. The mechanism is proven by the test below instead: the
+    // arithmetic is delegated to Postgres via `{ decrement: ... }` in
+    // ConsumptionsService, never computed in Node.
     expect(batch.currentStock.toString()).toBe('99.7');
+  });
+
+  it('decrements with exact decimal precision, unlike a JS float subtraction', async () => {
+    await prisma.reagentBatch.update({
+      where: { id: batchId },
+      data: { initialStock: '1.0000', currentStock: '1.0000' },
+    });
+    const token = await tokenFor('ana');
+    await request(app.getHttpServer())
+      .post('/consumptions')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        batchId,
+        quantity: '0.9999',
+        consumedAt: '2026-08-01T10:00:00.000Z',
+        purpose: 'Precisión decimal',
+      })
+      .expect(201);
+
+    const batch = await prisma.reagentBatch.findUniqueOrThrow({
+      where: { id: batchId },
+    });
+    // 1 - 0.9999 in binary floating point is 0.00009999999999998899, not
+    // 0.0001. This assertion would fail against a Node-side subtraction, so
+    // it actually pins the decrement happening in Postgres.
+    expect(batch.currentStock.toString()).toBe('0.0001');
   });
 
   it('rejects a quantity greater than the batch stock and leaves the stock untouched', async () => {
