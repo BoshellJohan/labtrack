@@ -1,4 +1,3 @@
-import { Transform } from 'class-transformer';
 import {
   IsDateString,
   IsIn,
@@ -24,12 +23,10 @@ export class CreateBatchDto {
   expirationDate?: string;
 
   // A decimal string, not a number: Decimal(12,4) does not survive a round trip
-  // through JavaScript's number type without losing precision. The global
-  // ValidationPipe runs with `enableImplicitConversion: true`, which would
-  // otherwise silently coerce a numeric body value to a string before
-  // `@Matches` ever sees it; reading the raw value back from `obj` restores
-  // the original type so a number in the request is still rejected.
-  @Transform(({ obj }: { obj: Record<string, unknown> }) => obj.initialStock)
+  // through JavaScript's number type without losing precision. Without
+  // implicit conversion, the ValidationPipe leaves the request body's type
+  // alone, so a numeric initialStock reaches `@Matches` still as a number
+  // and is rejected rather than silently coerced to a string first.
   @Matches(/^\d{1,8}(\.\d{1,4})?$/, {
     message:
       'initialStock must be a positive decimal with up to 4 decimal places',
