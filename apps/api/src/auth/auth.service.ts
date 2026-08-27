@@ -21,7 +21,9 @@ export class AuthService {
   ) {}
 
   async login(dto: LoginDto): Promise<LoginResponse> {
-    const user = await this.prisma.user.findUnique({ where: { username: dto.username } });
+    const user = await this.prisma.user.findUnique({
+      where: { username: dto.username },
+    });
 
     // Same exception for a missing user, a wrong password and a deactivated
     // account, so login never reveals which check failed.
@@ -51,7 +53,9 @@ export class AuthService {
     // A wrong current password is a form error, not an invalid session. A 401
     // here would be read by the client interceptor as an expired token and
     // would log the user out on a typo, so it is a coded 400 instead.
-    if (!(await this.passwords.verify(dto.currentPassword, user.passwordHash))) {
+    if (
+      !(await this.passwords.verify(dto.currentPassword, user.passwordHash))
+    ) {
       throw new BadRequestException({
         statusCode: HttpStatus.BAD_REQUEST,
         code: 'INVALID_CURRENT_PASSWORD',
@@ -68,7 +72,9 @@ export class AuthService {
   }
 
   async findProfile(userId: string): Promise<UserDto> {
-    const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
+    const user = await this.prisma.user.findUniqueOrThrow({
+      where: { id: userId },
+    });
     return toUserDto(user);
   }
 }

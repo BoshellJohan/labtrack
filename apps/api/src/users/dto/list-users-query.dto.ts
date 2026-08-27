@@ -2,7 +2,12 @@ import { Transform } from 'class-transformer';
 import { IsBoolean, IsIn, IsOptional, IsString } from 'class-validator';
 import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 
-export const USER_SORT_COLUMNS = ['username', 'fullName', 'role', 'createdAt'] as const;
+export const USER_SORT_COLUMNS = [
+  'username',
+  'fullName',
+  'role',
+  'createdAt',
+] as const;
 
 export class ListUsersQueryDto extends PaginationQueryDto {
   @IsOptional()

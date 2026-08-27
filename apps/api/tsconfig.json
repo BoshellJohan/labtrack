@@ -15,6 +15,11 @@
     "outDir": "./dist",
     "baseUrl": "./",
     "incremental": true,
+    // Kept inside outDir so the cache cannot outlive the output it describes.
+    // Left at the project root, a deleted dist/ (git clean, branch switch) leaves
+    // behind a buildinfo claiming everything is current: tsc then emits nothing,
+    // prints "Found 0 errors", and Nest dies on a missing dist/main.
+    "tsBuildInfoFile": "./dist/tsconfig.tsbuildinfo",
     "skipLibCheck": true,
     "strictNullChecks": true,
     "forceConsistentCasingInFileNames": true,

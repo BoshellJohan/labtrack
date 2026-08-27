@@ -6,6 +6,8 @@ export const COMMON_ES = {
   requiredField: 'Este campo es obligatorio',
   unexpectedError: 'Ocurrió un error inesperado. Intenta de nuevo.',
   usersLink: 'Usuarios',
+  locationsLink: 'Ubicaciones',
+  reagentsLink: 'Reactivos',
   logout: 'Cerrar sesión',
   paginator: {
     itemsPerPage: 'Elementos por página',

@@ -14,7 +14,9 @@ function buildService() {
       update: jest.fn(),
     },
     $transaction: jest.fn(
-      (argument: unknown[] | ((tx: unknown) => Promise<unknown>)): Promise<unknown> =>
+      (
+        argument: unknown[] | ((tx: unknown) => Promise<unknown>),
+      ): Promise<unknown> =>
         typeof argument === 'function'
           ? argument(prisma)
           : Promise.all(argument as Promise<unknown>[]),
@@ -41,7 +43,12 @@ const storedUser = {
 describe('UsersService', () => {
   it('excludes inactive users unless explicitly requested', async () => {
     const { service, prisma } = buildService();
-    await service.list({ page: 1, pageSize: 20, sortOrder: 'desc', skip: 0 } as never);
+    await service.list({
+      page: 1,
+      pageSize: 20,
+      sortOrder: 'desc',
+      skip: 0,
+    } as never);
     expect(prisma.user.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: { active: true } }),
     );
@@ -56,7 +63,9 @@ describe('UsersService', () => {
       skip: 0,
       includeInactive: true,
     } as never);
-    expect(prisma.user.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: {} }));
+    expect(prisma.user.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: {} }),
+    );
   });
 
   it('hashes the password before storing a new user', async () => {
@@ -75,26 +84,36 @@ describe('UsersService', () => {
     });
 
     await service.create(
-      { username: 'luis', fullName: 'Luis Paz', password: 'temporary1', role: 'USER' },
+      {
+        username: 'luis',
+        fullName: 'Luis Paz',
+        password: 'temporary1',
+        role: 'USER',
+      },
       'admin-1',
     );
 
     expect(passwords.hash).toHaveBeenCalledWith('temporary1');
+    const expectedData = expect.objectContaining({
+      passwordHash: 'hashed',
+      mustChangePassword: true,
+      madeById: 'admin-1',
+    }) as Record<string, unknown>;
     expect(prisma.user.create).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({
-          passwordHash: 'hashed',
-          mustChangePassword: true,
-          madeById: 'admin-1',
-        }),
-      }),
+      expect.objectContaining({ data: expectedData }),
     );
-    expect(prisma.user.create.mock.calls[0][0].data.password).toBeUndefined();
+    const createCalls = prisma.user.create.mock.calls as Array<
+      [{ data: { password?: string } }]
+    >;
+    expect(createCalls[0][0].data.password).toBeUndefined();
   });
 
   it('renames a user without touching any field outside the DTO', async () => {
     const { service, prisma } = buildService();
-    prisma.user.update.mockResolvedValue({ ...storedUser, fullName: 'Luis Paz Mejia' });
+    prisma.user.update.mockResolvedValue({
+      ...storedUser,
+      fullName: 'Luis Paz Mejia',
+    });
 
     await service.update('u2', { fullName: 'Luis Paz Mejia' }, 'admin-1');
 
@@ -107,28 +126,40 @@ describe('UsersService', () => {
   it('refuses to demote the administrator performing the request', async () => {
     const { service, prisma } = buildService();
 
-    await expect(service.update('admin-1', { role: 'USER' }, 'admin-1')).rejects.toBeInstanceOf(
-      BadRequestException,
-    );
+    await expect(
+      service.update('admin-1', { role: 'USER' }, 'admin-1'),
+    ).rejects.toBeInstanceOf(BadRequestException);
     expect(prisma.user.update).not.toHaveBeenCalled();
   });
 
   it('refuses to demote the last active administrator', async () => {
     const { service, prisma } = buildService();
-    prisma.user.findUnique.mockResolvedValue({ ...storedUser, id: 'admin-2', role: 'ADMIN' });
+    prisma.user.findUnique.mockResolvedValue({
+      ...storedUser,
+      id: 'admin-2',
+      role: 'ADMIN',
+    });
     prisma.user.count.mockResolvedValue(1);
 
-    await expect(service.update('admin-2', { role: 'USER' }, 'admin-1')).rejects.toBeInstanceOf(
-      BadRequestException,
-    );
+    await expect(
+      service.update('admin-2', { role: 'USER' }, 'admin-1'),
+    ).rejects.toBeInstanceOf(BadRequestException);
     expect(prisma.user.update).not.toHaveBeenCalled();
   });
 
   it('demotes an administrator while another active one remains', async () => {
     const { service, prisma } = buildService();
-    prisma.user.findUnique.mockResolvedValue({ ...storedUser, id: 'admin-2', role: 'ADMIN' });
+    prisma.user.findUnique.mockResolvedValue({
+      ...storedUser,
+      id: 'admin-2',
+      role: 'ADMIN',
+    });
     prisma.user.count.mockResolvedValue(2);
-    prisma.user.update.mockResolvedValue({ ...storedUser, id: 'admin-2', role: 'USER' });
+    prisma.user.update.mockResolvedValue({
+      ...storedUser,
+      id: 'admin-2',
+      role: 'USER',
+    });
 
     await service.update('admin-2', { role: 'USER' }, 'admin-1');
 
@@ -140,9 +171,9 @@ describe('UsersService', () => {
 
   it('refuses to deactivate the account performing the request', async () => {
     const { service } = buildService();
-    await expect(service.deactivate('admin-1', 'admin-1')).rejects.toBeInstanceOf(
-      BadRequestException,
-    );
+    await expect(
+      service.deactivate('admin-1', 'admin-1'),
+    ).rejects.toBeInstanceOf(BadRequestException);
   });
 
   it('deactivates instead of deleting', async () => {

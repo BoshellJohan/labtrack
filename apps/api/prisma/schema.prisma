@@ -28,5 +28,109 @@ model User {
   madeBy   User?   @relation("UserCreatedBy", fields: [madeById], references: [id])
   created  User[]  @relation("UserCreatedBy")
 
+  createdLocations    Location[]     @relation("LocationCreatedBy")
+  createdReagents     Reagent[]      @relation("ReagentCreatedBy")
+  createdBatches      ReagentBatch[] @relation("BatchCreatedBy")
+  createdConsumptions Consumption[]  @relation("ConsumptionCreatedBy")
+  voidedConsumptions  Consumption[]  @relation("ConsumptionVoidedBy")
+
+  @@index([active])
+}
+
+enum Unit {
+  G
+  MG
+  KG
+  ML
+  L
+  UNIT
+}
+
+model Location {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  madeById String
+  madeBy   User   @relation("LocationCreatedBy", fields: [madeById], references: [id])
+
+  batches ReagentBatch[]
+
+  @@index([active])
+}
+
+model Reagent {
+  id           String   @id @default(uuid())
+  name         String
+  casNumber    String
+  reference    String?
+  description  String?
+  dataSheetUrl String?
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  madeById String
+  madeBy   User   @relation("ReagentCreatedBy", fields: [madeById], references: [id])
+
+  batches ReagentBatch[]
+
+  @@index([name])
+  @@index([casNumber])
+  @@index([active])
+}
+
+model ReagentBatch {
+  id             String    @id @default(uuid())
+  lotNumber      String
+  entryDate      DateTime
+  expirationDate DateTime?
+  initialStock   Decimal   @db.Decimal(12, 4)
+  currentStock   Decimal   @db.Decimal(12, 4)
+  unit           Unit
+  active         Boolean   @default(true)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  reagentId  String
+  reagent    Reagent  @relation(fields: [reagentId], references: [id])
+  locationId String
+  location   Location @relation(fields: [locationId], references: [id])
+
+  madeById String
+  madeBy   User   @relation("BatchCreatedBy", fields: [madeById], references: [id])
+
+  consumptions Consumption[]
+
+  @@index([reagentId])
+  @@index([expirationDate])
+  @@index([locationId])
+  @@index([active])
+}
+
+model Consumption {
+  id         String    @id @default(uuid())
+  consumedAt DateTime
+  quantity   Decimal   @db.Decimal(12, 4)
+  purpose    String
+  active     Boolean   @default(true)
+  voidReason String?
+  voidedAt   DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  batchId String
+  batch   ReagentBatch @relation(fields: [batchId], references: [id])
+
+  voidedById String?
+  voidedBy   User?   @relation("ConsumptionVoidedBy", fields: [voidedById], references: [id])
+  madeById   String
+  madeBy     User    @relation("ConsumptionCreatedBy", fields: [madeById], references: [id])
+
+  @@index([batchId])
+  @@index([consumedAt])
   @@index([active])
 }

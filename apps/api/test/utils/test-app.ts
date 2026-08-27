@@ -3,6 +3,7 @@ import { INestApplication } from '@nestjs/common';
 import { AppModule } from '../../src/app.module';
 import { PrismaService } from '../../src/prisma/prisma.service';
 import { configureApp } from '../../src/common/configure-app';
+import { assertTestDatabase } from './assert-test-database';
 
 export interface TestContext {
   app: INestApplication;
@@ -10,7 +11,10 @@ export interface TestContext {
 }
 
 export async function createTestApp(): Promise<TestContext> {
-  const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
+  assertTestDatabase(process.env.DATABASE_URL);
+  const moduleRef = await Test.createTestingModule({
+    imports: [AppModule],
+  }).compile();
   const app = moduleRef.createNestApplication();
   configureApp(app);
   await app.init();
@@ -23,5 +27,8 @@ export async function createTestApp(): Promise<TestContext> {
 // test/jest-e2e.json; removing it reintroduces nondeterministic races
 // between one suite's truncate and another's inserts.
 export async function resetDatabase(prisma: PrismaService): Promise<void> {
-  await prisma.$executeRawUnsafe('TRUNCATE TABLE "User" RESTART IDENTITY CASCADE');
+  assertTestDatabase(process.env.DATABASE_URL);
+  await prisma.$executeRawUnsafe(
+    'TRUNCATE TABLE "User" RESTART IDENTITY CASCADE',
+  );
 }
