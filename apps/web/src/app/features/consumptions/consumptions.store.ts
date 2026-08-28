@@ -2,6 +2,7 @@ import { Injectable, computed } from '@angular/core';
 import { Observable, Subject, debounceTime, tap } from 'rxjs';
 import { ConsumptionDto, VoidConsumptionRequest } from '@labtrack/shared';
 import { PaginatedStore } from '../../shared/paginated-store';
+import { toUtcMidnightIso } from '../../shared/date/utc-midnight';
 
 // Every value primitive: the store's serialisation boundary is cast, so a
 // Date or a nested object here would compile and fail at runtime.
@@ -52,11 +53,15 @@ export class ConsumptionsStore extends PaginatedStore<ConsumptionDto, Consumptio
   }
 
   // Converted here rather than in the component so no Date can reach the
-  // filter object by another route.
+  // filter object by another route. Uses toUtcMidnightIso rather than the
+  // picker Date's own .toISOString(), which converts *local* midnight to
+  // UTC and shifts the calendar day at any timezone other than UTC itself —
+  // the same normalization register-consumption.component.ts applies on
+  // the write side, so the two agree on which day an instant belongs to.
   setDateRange(from: Date | null, to: Date | null): void {
     this.applyFilters({
-      from: from ? from.toISOString() : undefined,
-      to: to ? to.toISOString() : undefined,
+      from: from ? toUtcMidnightIso(from) : undefined,
+      to: to ? toUtcMidnightIso(to) : undefined,
     });
   }
 

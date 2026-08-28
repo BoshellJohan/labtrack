@@ -12,6 +12,7 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 import { Subject, catchError, of, switchMap } from 'rxjs';
 import { CreateConsumptionRequest, ReagentBatchDto, ReagentDto } from '@labtrack/shared';
 import { ApiService } from '../../core/api/api.service';
+import { toUtcMidnightIso } from '../../shared/date/utc-midnight';
 import { REAGENTS_ES } from '../reagents/i18n.es';
 import { REGISTER_CONSUMPTION_ES } from './i18n.es';
 import { COMMON_ES } from '../../shared/i18n/es';
@@ -43,16 +44,6 @@ function compareDecimalStrings(a: string, b: string): number {
 // The same pattern the API's CreateConsumptionRequest DTO enforces, applied
 // client-side so a malformed quantity is caught before a round trip.
 const QUANTITY_PATTERN = /^\d{1,8}(\.\d{1,4})?$/;
-
-// The datepicker yields a Date at *local* midnight. Calling .toISOString()
-// on it directly converts that local instant to UTC, which shifts the
-// calendar day backwards in any timezone ahead of UTC (e.g. local midnight
-// Aug 1 in Madrid, UTC+2, is 2026-07-31T22:00:00.000Z). Build the UTC instant
-// from the picker's calendar-day components instead, mirroring how
-// ReagentsComponent.expiryStatus() normalizes a date to a UTC calendar day.
-function toUtcMidnightIso(date: Date): string {
-  return new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate())).toISOString();
-}
 
 @Component({
   selector: 'lt-register-consumption',

@@ -70,12 +70,12 @@ describe('ConsumptionsStore', () => {
     }
   });
 
-  it('sends the date range as ISO strings, not Date objects', () => {
-    store.setDateRange(new Date('2026-08-01T00:00:00.000Z'), new Date('2026-08-31T00:00:00.000Z'));
+  it('sends the date range as UTC-midnight ISO strings, not the picker\'s local-midnight instant', () => {
+    // new Date(year, month, day) is local midnight — what a mat-datepicker
+    // actually yields. A fixture already at UTC midnight cannot catch a
+    // .toISOString() bug: it is a no-op on a UTC instant either way.
+    store.setDateRange(new Date(2026, 7, 1), new Date(2026, 7, 31));
     const request = http.expectOne((r) => r.url === 'http://api.test/consumptions');
-    // A Date in the filter object would compile — the store's serialisation
-    // boundary is cast — and then serialize as a locale-dependent string the
-    // API rejects.
     expect(request.request.params.get('from')).toBe('2026-08-01T00:00:00.000Z');
     expect(request.request.params.get('to')).toBe('2026-08-31T00:00:00.000Z');
     request.flush(emptyPage);
