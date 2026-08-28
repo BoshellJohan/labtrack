@@ -398,6 +398,16 @@ describe('Consumptions (e2e)', () => {
       .expect(200);
   });
 
+  it('accepts a range whose bounds are the same instant, which is a legitimate single-day query', async () => {
+    const token = await tokenFor('ana');
+    await request(app.getHttpServer())
+      .get(
+        '/consumptions?from=2026-08-01T00:00:00.000Z&to=2026-08-01T00:00:00.000Z',
+      )
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+  });
+
   it('filters by a partial purpose, case-insensitively', async () => {
     await seedConsumptions();
     const token = await tokenFor('ana');

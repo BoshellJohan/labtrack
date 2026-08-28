@@ -551,6 +551,16 @@ describe('Reagents (e2e)', () => {
       .expect(200);
   });
 
+  it('accepts a range whose bounds are the same instant, which is a legitimate single-day query', async () => {
+    const token = await tokenFor('admin');
+    await request(app.getHttpServer())
+      .get(
+        '/reagents?minConsumed=500&minConsumedUnit=ML&consumedFrom=2026-08-01T00:00:00.000Z&consumedTo=2026-08-01T00:00:00.000Z',
+      )
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+  });
+
   it('combines lowStock with a name filter rather than replacing it', async () => {
     const admin = await prisma.user.findUniqueOrThrow({
       where: { username: 'admin' },
