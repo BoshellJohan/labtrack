@@ -4,6 +4,7 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { MatDialog } from '@angular/material/dialog';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { ConsumptionsComponent } from './consumptions.component';
+import { ConsumptionsStore } from './consumptions.store';
 import { CONSUMPTIONS_ES } from './i18n.es';
 import { AuthService } from '../../core/auth/auth.service';
 import { API_URL } from '../../core/api/api.config';
@@ -84,6 +85,51 @@ describe('ConsumptionsComponent', () => {
     expect(text).toContain('0.3 ML');
   });
 
+  it('seeds the filter form from a filter the root-scoped store retained across navigation', () => {
+    // ConsumptionsStore is providedIn: 'root', so its filters survive the
+    // component being destroyed and recreated (navigating away and back).
+    // Set a filter on the store *before* the component exists, the way it
+    // would already be set on a second visit to the screen.
+    TestBed.configureTestingModule({
+      imports: [ConsumptionsComponent],
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: API_URL, useValue: 'http://api.test' },
+        {
+          provide: AuthService,
+          useValue: { isAdmin: () => true, currentUser: () => null, isAuthenticated: () => true },
+        },
+        { provide: MatDialog, useValue: {} },
+        { provide: MatSnackBar, useValue: { open: () => undefined } },
+      ],
+    });
+
+    const store = TestBed.inject(ConsumptionsStore);
+    http = TestBed.inject(HttpTestingController);
+    // setReagentId (unlike setPurpose) applies immediately, with no debounce,
+    // so the request it queues can be settled synchronously here.
+    store.setReagentId('r1');
+    // Settle the filter's own reload (the first visit to the screen) before
+    // the component — the second visit — is created, so only one request is
+    // in flight at a time.
+    http.expectOne((req) => req.url === 'http://api.test/consumptions').flush(consumptionsPage(activeConsumption));
+
+    fixture = TestBed.createComponent(ConsumptionsComponent);
+    fixture.detectChanges();
+    http.expectOne((r) => r.url === 'http://api.test/reagents').flush(emptyReagentsPage());
+
+    const consumptionsRequest = http.expectOne((req) => req.url === 'http://api.test/consumptions');
+    // The request the retained filter drives must match what the input
+    // shows — this is the request setReagentId() above already queued.
+    expect(consumptionsRequest.request.params.get('reagentId')).toBe('r1');
+    consumptionsRequest.flush(consumptionsPage(activeConsumption));
+    fixture.detectChanges();
+
+    const component = fixture.componentInstance;
+    expect(component.filtersForm.controls.reagentId.value).toBe('r1');
+  });
+
   it('hides the void action from a non-admin', () => {
     // Server-side RolesGuard is the real enforcement; this only checks the
     // affordance is not offered.
@@ -97,6 +143,22 @@ describe('ConsumptionsComponent', () => {
 
     const text = fixture.nativeElement.textContent as string;
     expect(text).not.toContain(CONSUMPTIONS_ES.voidAction);
+  });
+
+  it('shows the void action to an admin', () => {
+    // The pair to "hides the void action from a non-admin": without this
+    // one, removing the button outright for everybody would also pass that
+    // test.
+    createComponent(true);
+    fixture.detectChanges();
+    http.expectOne((r) => r.url === 'http://api.test/reagents').flush(emptyReagentsPage());
+    http
+      .expectOne((r) => r.url === 'http://api.test/consumptions')
+      .flush(consumptionsPage(activeConsumption));
+    fixture.detectChanges();
+
+    const text = fixture.nativeElement.textContent as string;
+    expect(text).toContain(CONSUMPTIONS_ES.voidAction);
   });
 
   it('hides the "incluir anulados" filter from a non-admin', () => {
@@ -113,6 +175,22 @@ describe('ConsumptionsComponent', () => {
 
     const text = fixture.nativeElement.textContent as string;
     expect(text).not.toContain(CONSUMPTIONS_ES.filters.includeVoided);
+  });
+
+  it('shows the "incluir anulados" filter to an admin', () => {
+    // The pair to "hides the ... filter from a non-admin": without this
+    // one, removing the checkbox outright for everybody would also pass
+    // that test.
+    createComponent(true);
+    fixture.detectChanges();
+    http.expectOne((r) => r.url === 'http://api.test/reagents').flush(emptyReagentsPage());
+    http
+      .expectOne((r) => r.url === 'http://api.test/consumptions')
+      .flush(consumptionsPage(activeConsumption));
+    fixture.detectChanges();
+
+    const text = fixture.nativeElement.textContent as string;
+    expect(text).toContain(CONSUMPTIONS_ES.filters.includeVoided);
   });
 
   it('shows who voided a consumption and why, not just that it is voided', () => {

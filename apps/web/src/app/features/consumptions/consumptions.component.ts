@@ -235,6 +235,19 @@ export class ConsumptionsComponent implements OnInit {
   }
 
   ngOnInit(): void {
+    // ConsumptionsStore is providedIn: 'root', so its filters survive this
+    // component being destroyed and recreated (navigating away and back).
+    // filtersForm is constructed fresh every time, so without this it would
+    // show empty next to a table the store is still filtering — seed it
+    // from the store so what the user sees matches what is actually being
+    // applied, with { emitEvent: false } so this doesn't loop back into
+    // another setFilters/reload.
+    this.filtersForm.controls.purpose.setValue(this.store.purposeFilter(), { emitEvent: false });
+    this.filtersForm.controls.reagentId.setValue(this.store.reagentIdFilter(), { emitEvent: false });
+    this.filtersForm.controls.from.setValue(this.store.fromFilter(), { emitEvent: false });
+    this.filtersForm.controls.to.setValue(this.store.toFilter(), { emitEvent: false });
+    this.filtersForm.controls.includeVoided.setValue(this.store.includeVoidedFilter(), { emitEvent: false });
+
     this.api.getPage<ReagentDto>('/reagents', { pageSize: 100 }).subscribe({
       next: (page) => this.reagentOptions.set(page.data),
       error: () =>

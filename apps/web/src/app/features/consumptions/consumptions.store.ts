@@ -23,6 +23,16 @@ export class ConsumptionsStore extends PaginatedStore<ConsumptionDto, Consumptio
   readonly purposeFilter = computed(() => this.filters().purpose ?? '');
   readonly reagentIdFilter = computed(() => this.filters().reagentId ?? '');
   readonly includeVoidedFilter = computed(() => this.filters().includeVoided ?? false);
+  // Stored as ISO strings (see ConsumptionsFilters above), so these convert
+  // back to a Date for the datepicker controls that seed from them.
+  readonly fromFilter = computed(() => {
+    const from = this.filters().from;
+    return from ? new Date(from) : null;
+  });
+  readonly toFilter = computed(() => {
+    const to = this.filters().to;
+    return to ? new Date(to) : null;
+  });
 
   // Typing in the purpose field is the chattiest of these filters, so it is
   // debounced here rather than in the component: this lets the store's own
