@@ -42,8 +42,15 @@ function buildService(
       count: jest.fn().mockResolvedValue(0),
       findUniqueOrThrow: jest.fn(),
     },
-    $transaction: jest.fn((ops: unknown[]) =>
-      Promise.all(ops as Promise<unknown>[]),
+    // $transaction is used two ways in this service: the array form for
+    // listForReagent's [findMany, count] pair, and the interactive-callback
+    // form runInTransaction uses for create(). Support both so both call
+    // sites exercise the real prisma.$transaction contract, not a
+    // convention-specific stub.
+    $transaction: jest.fn((arg: unknown) =>
+      typeof arg === 'function'
+        ? (arg as (client: unknown) => Promise<unknown>)(prisma)
+        : Promise.all(arg as Promise<unknown>[]),
     ),
   };
   return { service: new BatchesService(prisma as never), prisma };
