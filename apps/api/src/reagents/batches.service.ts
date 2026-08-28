@@ -6,6 +6,7 @@ import {
 } from '@labtrack/shared';
 import { Prisma } from '../prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { runInTransaction } from '../common/prisma/transaction';
 import { toBatchDto } from '../common/mappers/batch.mapper';
 import { CreateBatchDto } from './dto/create-batch.dto';
 import { UpdateBatchDto } from './dto/update-batch.dto';
@@ -23,10 +24,18 @@ export class BatchesService {
   async listForReagent(
     reagentId: string,
     query: ListBatchesQueryDto,
+    includeInactive: boolean,
   ): Promise<PaginatedResponse<ReagentBatchDto>> {
     const where: Prisma.ReagentBatchWhereInput = { reagentId };
-    if (!query.includeInactive) {
+    if (!includeInactive) {
+      // Defensive, not incidental: today `deactivate()` on a reagent always
+      // cascades to its batches in the same transaction, so this condition
+      // never changes the result. But this endpoint's safety should not rely
+      // on that cascade holding forever — a non-admin must never see batches
+      // of a reagent that is itself inactive, even if a future code path
+      // ever deactivates a reagent without its batches.
       where.active = true;
+      where.reagent = { active: true };
     }
 
     // The count and the rows are read in the same transaction, and the id
@@ -56,24 +65,6 @@ export class BatchesService {
     dto: CreateBatchDto,
     actorId: string,
   ): Promise<ReagentBatchDto> {
-    const reagent = await this.prisma.reagent.findUnique({
-      where: { id: reagentId },
-    });
-    if (!reagent || !reagent.active) {
-      throw new BadRequestException(
-        'Cannot add a batch to an inactive reagent',
-      );
-    }
-
-    const location = await this.prisma.location.findUnique({
-      where: { id: dto.locationId },
-    });
-    if (!location || !location.active) {
-      throw new BadRequestException(
-        'Cannot store a batch in an inactive location',
-      );
-    }
-
     const entryDate = new Date(dto.entryDate);
     if (dto.expirationDate && new Date(dto.expirationDate) <= entryDate) {
       throw new BadRequestException(
@@ -81,27 +72,55 @@ export class BatchesService {
       );
     }
 
-    const batch = await this.prisma.reagentBatch.create({
-      data: {
-        reagentId,
-        locationId: dto.locationId,
-        lotNumber: dto.lotNumber,
-        entryDate,
-        expirationDate: dto.expirationDate
-          ? new Date(dto.expirationDate)
-          : null,
-        // currentStock is derived here and never read from the request: stock
-        // moves only through consumptions, and letting a client set it would
-        // open a way to change the inventory with no trace of who or why.
-        initialStock: dto.initialStock,
-        currentStock: dto.initialStock,
-        unit: dto.unit,
-        madeById: actorId,
-      },
-      include: WITH_RELATIONS,
-    });
+    // Read-then-write: the reagent and location active checks must see the
+    // same state the insert commits under, or a concurrent
+    // PATCH /reagents/:id/deactivate can land between the read and the write
+    // and produce an active batch under a now-inactive reagent — the exact
+    // state listForReagent's defensive `reagent: { active: true }` filter
+    // assumes cannot happen. runInTransaction defaults to Serializable for
+    // exactly this shape (see ConsumptionsService.create).
+    return runInTransaction(this.prisma, async (tx) => {
+      const reagent = await tx.reagent.findUnique({
+        where: { id: reagentId },
+      });
+      if (!reagent || !reagent.active) {
+        throw new BadRequestException(
+          'Cannot add a batch to an inactive reagent',
+        );
+      }
 
-    return toBatchDto(batch);
+      const location = await tx.location.findUnique({
+        where: { id: dto.locationId },
+      });
+      if (!location || !location.active) {
+        throw new BadRequestException(
+          'Cannot store a batch in an inactive location',
+        );
+      }
+
+      const batch = await tx.reagentBatch.create({
+        data: {
+          reagentId,
+          locationId: dto.locationId,
+          lotNumber: dto.lotNumber,
+          entryDate,
+          expirationDate: dto.expirationDate
+            ? new Date(dto.expirationDate)
+            : null,
+          // currentStock is derived here and never read from the request:
+          // stock moves only through consumptions, and letting a client set
+          // it would open a way to change the inventory with no trace of who
+          // or why.
+          initialStock: dto.initialStock,
+          currentStock: dto.initialStock,
+          unit: dto.unit,
+          madeById: actorId,
+        },
+        include: WITH_RELATIONS,
+      });
+
+      return toBatchDto(batch);
+    });
   }
 
   async update(id: string, dto: UpdateBatchDto): Promise<ReagentBatchDto> {

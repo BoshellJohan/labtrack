@@ -18,7 +18,7 @@ interface CreateBatchCallArgs {
 function buildService(
   overrides: { reagent?: unknown; location?: unknown } = {},
 ) {
-  const prisma = {
+  const client = {
     reagent: {
       findUnique: jest
         .fn()
@@ -42,10 +42,20 @@ function buildService(
       count: jest.fn().mockResolvedValue(0),
       findUniqueOrThrow: jest.fn(),
     },
-    $transaction: jest.fn((ops: unknown[]) =>
-      Promise.all(ops as Promise<unknown>[]),
-    ),
   };
+  // $transaction is used two ways in this service: the array form for
+  // listForReagent's [findMany, count] pair, and the interactive-callback
+  // form runInTransaction uses for create(). Support both so both call
+  // sites exercise the real prisma.$transaction contract, not a
+  // convention-specific stub. Declared separately from `client` (rather
+  // than inline) so the callback can reference `client` without the object
+  // literal becoming self-referential and losing its inferred type.
+  const $transaction = jest.fn((arg: unknown) =>
+    typeof arg === 'function'
+      ? (arg as (tx: typeof client) => Promise<unknown>)(client)
+      : Promise.all(arg as Promise<unknown>[]),
+  );
+  const prisma = { ...client, $transaction };
   return { service: new BatchesService(prisma as never), prisma };
 }
 

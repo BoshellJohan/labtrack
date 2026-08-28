@@ -20,6 +20,8 @@ import { HOME_ES } from './i18n.es';
       <p>{{ text.pendingPhase }}</p>
       <div class="links">
         <a mat-flat-button color="primary" routerLink="/reactivos">{{ text.reagentsLink }}</a>
+        <a mat-flat-button color="primary" routerLink="/consumos/registrar">{{ text.registerConsumptionLink }}</a>
+        <a mat-flat-button color="primary" routerLink="/consumos">{{ text.consumptionsLink }}</a>
         @if (auth.isAdmin()) {
           <a mat-flat-button color="primary" routerLink="/usuarios">{{ text.usersLink }}</a>
           <a mat-flat-button color="primary" routerLink="/ubicaciones">{{ text.locationsLink }}</a>

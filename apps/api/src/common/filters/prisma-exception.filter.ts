@@ -32,6 +32,16 @@ export class PrismaExceptionFilter implements ExceptionFilter {
           code: 'NOT_FOUND',
         });
         return;
+      case 'P2034':
+        // Serializable transactions do not block conflicting writers; Postgres
+        // aborts one with SQLSTATE 40001, which Prisma surfaces as P2034. This
+        // is an expected outcome of concurrent writes under Serializable, not
+        // a server failure, so it gets a 409 telling the client to retry.
+        response.status(HttpStatus.CONFLICT).json({
+          statusCode: HttpStatus.CONFLICT,
+          code: 'WRITE_CONFLICT',
+        });
+        return;
       default:
         response.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
           statusCode: HttpStatus.INTERNAL_SERVER_ERROR,

@@ -8,6 +8,7 @@ import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { LocationsModule } from './locations/locations.module';
 import { ReagentsModule } from './reagents/reagents.module';
+import { ConsumptionsModule } from './consumptions/consumptions.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
 import { PasswordChangeGuard } from './common/guards/password-change.guard';
@@ -20,6 +21,7 @@ import { PasswordChangeGuard } from './common/guards/password-change.guard';
     UsersModule,
     LocationsModule,
     ReagentsModule,
+    ConsumptionsModule,
   ],
   controllers: [HealthController],
   providers: [

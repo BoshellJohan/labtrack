@@ -1,6 +1,7 @@
 import { Prisma } from '../prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ListReagentsQueryDto } from './dto/list-reagents-query.dto';
+import { normalizeForSearch } from '../common/text/normalize';
 
 /**
  * Translates the simple filters into a Prisma `where`. Internal to this file:
@@ -15,7 +16,10 @@ function buildReagentWhere(
     where.active = true;
   }
   if (query.name) {
-    where.name = { contains: query.name, mode: 'insensitive' };
+    // Both sides normalized: the column by Postgres, the term by us. `mode`
+    // is gone because the column is already lowercased — asking for
+    // case-insensitivity here would defeat the trigram index.
+    where.nameNormalized = { contains: normalizeForSearch(query.name) };
   }
   if (query.casNumber) {
     where.casNumber = query.casNumber;
@@ -23,6 +27,39 @@ function buildReagentWhere(
   if (query.locationId) {
     // A reagent matches a location when any of its active batches sits there.
     where.batches = { some: { active: true, locationId: query.locationId } };
+  }
+
+  // Both of these ask about a reagent's *batches*, so they are `some` clauses
+  // over active batches — a reagent qualifies when at least one batch does.
+  //
+  // `expiringBefore` merges into the same `some` as `locationId` above: with
+  // both set, they demand one batch that is both in that location and
+  // expiring soon — the question a lab asks while standing at a shelf.
+  //
+  // `lowStock` deliberately does NOT join that `some`; it goes into its own
+  // `where.AND` entry below. A reagent whose nearly-empty batch and whose
+  // expiring batch are two different batches must still match `lowStock` —
+  // folding it into the shared `some` would wrongly require a single batch
+  // to satisfy every active filter at once.
+  if (query.expiringBefore) {
+    where.batches = {
+      ...(where.batches ?? {}),
+      some: {
+        ...(where.batches?.some ?? {}),
+        active: true,
+        expirationDate: { not: null, lte: new Date(query.expiringBefore) },
+      },
+    };
+  }
+  if (query.lowStock) {
+    where.AND = [
+      ...(Array.isArray(where.AND) ? where.AND : []),
+      {
+        batches: {
+          some: { active: true, currentStock: { lte: query.lowStock } },
+        },
+      },
+    ];
   }
 
   return where;

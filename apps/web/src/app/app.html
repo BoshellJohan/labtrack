@@ -2,6 +2,8 @@
   <mat-toolbar color="primary">
     <span class="brand">{{ common.appName }}</span>
     <a mat-button routerLink="/reactivos">{{ common.reagentsLink }}</a>
+    <a mat-button routerLink="/consumos/registrar">{{ common.registerConsumptionLink }}</a>
+    <a mat-button routerLink="/consumos">{{ common.consumptionsLink }}</a>
     @if (auth.isAdmin()) {
       <a mat-button routerLink="/usuarios">{{ common.usersLink }}</a>
       <a mat-button routerLink="/ubicaciones">{{ common.locationsLink }}</a>

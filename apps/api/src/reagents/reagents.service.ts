@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import {
   PaginatedResponse,
   ReagentDto,
@@ -40,11 +40,18 @@ export class ReagentsService {
     );
   }
 
-  async findOne(id: string): Promise<ReagentDto> {
-    const reagent = await this.prisma.reagent.findUniqueOrThrow({
-      where: { id },
+  // A deactivated reagent is "deleted" for everyone but an administrator
+  // (spec §6.1). `findFirst` with the filter — rather than a fetch and a
+  // post-hoc check — keeps the not-found and the not-visible cases on one
+  // path, so neither leaks the other's existence through a different status.
+  async findOne(id: string, includeInactive: boolean): Promise<ReagentDto> {
+    const reagent = await this.prisma.reagent.findFirst({
+      where: includeInactive ? { id } : { id, active: true },
       include: { batches: true },
     });
+    if (!reagent) {
+      throw new NotFoundException('Reagent not found');
+    }
     return toReagentDto(reagent);
   }
 
@@ -94,6 +101,11 @@ export class ReagentsService {
       { isolationLevel: 'ReadCommitted' },
     );
 
-    return this.findOne(id);
+    // `true` is safe here, not arbitrary: this route is `@Roles('ADMIN')`-gated
+    // (see the controller), and this call re-reads the row this method just
+    // deactivated, so it must bypass the active filter or it would 404 on its
+    // own write. If `deactivate`'s role guard is ever relaxed, this literal
+    // needs to be revisited too.
+    return this.findOne(id, true);
   }
 }
