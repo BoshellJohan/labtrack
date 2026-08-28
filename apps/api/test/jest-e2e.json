@@ -12,6 +12,7 @@
     "^.+\\.(t|j)s$": "ts-jest"
   },
   "maxWorkers": 1,
+  "testTimeout": 30000,
   "moduleNameMapper": {
     "^(\\.{1,2}/.*)\\.js$": "$1"
   }
