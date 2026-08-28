@@ -278,7 +278,7 @@ tipado y el `include` de Prisma sin forzar su API de agregación, que no cubre
 ```sql
 SELECT r.id
 FROM   "Reagent" r
-JOIN   "ReagentBatch" b ON b."reagentId" = r.id AND b.active
+JOIN   "ReagentBatch" b ON b."reagentId" = r.id AND b.active AND b.unit = $unit
 JOIN   "Consumption"  c ON c."batchId"   = b.id AND c.active
 WHERE  r.active
   AND ($from IS NULL OR c."consumedAt" >= $from)
@@ -286,6 +286,12 @@ WHERE  r.active
 GROUP BY r.id
 HAVING SUM(c.quantity) > $minConsumed
 ```
+
+La unidad (`$unit`) es obligatoria junto con el umbral, no incidental: un reactivo
+puede tener existencias en mililitros y en litros a la vez, y sumar consumos de
+ambas unidades produciría una cantidad que no corresponde a ninguna magnitud
+física real. Por eso el `JOIN` con `ReagentBatch` fija la unidad antes de agrupar,
+en vez de agrupar por reactivo solo.
 
 El filtro es opcional. Si `minConsumed` no viene, se toma el camino simple sin el
 join de agregación, que es el caso frecuente y el más rápido.

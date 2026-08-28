@@ -2,6 +2,7 @@ import { Prisma } from '../prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ListReagentsQueryDto } from './dto/list-reagents-query.dto';
 import { normalizeForSearch } from '../common/text/normalize';
+import { selectConsumedReagentIds } from './consumed-reagent-ids.query';
 
 /**
  * Translates the simple filters into a Prisma `where`. Internal to this file:
@@ -92,6 +93,24 @@ export async function selectReagentIds(
   query: ListReagentsQueryDto,
 ): Promise<ReagentIdSelection> {
   const where = buildReagentWhere(query);
+
+  // Spec §6.2. The aggregation runs first and yields the ids that qualify;
+  // the simple filters then apply to exactly those ids through the ordinary
+  // Prisma path, so `buildReagentWhere` stays the single definition of what
+  // every other filter means.
+  //
+  // `null` means the filter was not requested. `[]` means it was requested
+  // and nothing qualified — which must produce an empty page, not the
+  // unfiltered list, so the two cannot be collapsed into one falsy check.
+  //
+  // The raw query returns every qualifying id, unpaginated — a few hundred
+  // rows at most for a laboratory's volume. The alternative, paginating
+  // inside the raw query, would force the simple filters to be re-expressed
+  // in SQL, where they would drift from `buildReagentWhere`.
+  const consumedIds = await selectConsumedReagentIds(prisma, query);
+  if (consumedIds !== null) {
+    where.id = { in: consumedIds };
+  }
 
   // The count uses the same `where` as the page, and both run in the same
   // transaction, so the total can never disagree with the rows it counts.
