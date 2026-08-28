@@ -295,7 +295,7 @@ describe('Consumptions (e2e)', () => {
     expect(page.total).toBe(2);
   });
 
-  it('hides a deactivated reagent\'s consumptions from a non-admin', async () => {
+  it("hides a deactivated reagent's consumptions from a non-admin", async () => {
     await seedConsumptions();
     await prisma.reagent.update({
       where: { id: reagentId },
