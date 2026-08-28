@@ -499,6 +499,38 @@ describe('Reagents (e2e)', () => {
       .expect(400);
   });
 
+  it('rejects minConsumed without a unit, because a quantity with no unit cannot be compared', async () => {
+    const token = await tokenFor('admin');
+    await request(app.getHttpServer())
+      .get('/reagents?minConsumed=500')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(400);
+  });
+
+  it('rejects a minConsumedUnit outside the Unit enum', async () => {
+    const token = await tokenFor('admin');
+    await request(app.getHttpServer())
+      .get('/reagents?minConsumed=500&minConsumedUnit=GALLON')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(400);
+  });
+
+  it('rejects a non-decimal minConsumed', async () => {
+    const token = await tokenFor('admin');
+    await request(app.getHttpServer())
+      .get('/reagents?minConsumed=mucho&minConsumedUnit=ML')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(400);
+  });
+
+  it('accepts a unit on its own, which simply narrows nothing', async () => {
+    const token = await tokenFor('admin');
+    await request(app.getHttpServer())
+      .get('/reagents?minConsumedUnit=ML')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+  });
+
   it('combines lowStock with a name filter rather than replacing it', async () => {
     const admin = await prisma.user.findUniqueOrThrow({
       where: { username: 'admin' },
