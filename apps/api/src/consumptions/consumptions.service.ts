@@ -85,6 +85,7 @@ export class ConsumptionsService {
 
   async list(
     query: ListConsumptionsQueryDto,
+    isAdmin: boolean,
   ): Promise<PaginatedResponse<ConsumptionDto>> {
     const where: Prisma.ConsumptionWhereInput = {};
 
@@ -97,7 +98,16 @@ export class ConsumptionsService {
     if (query.reagentId) {
       // A consumption belongs to a batch, and a batch to a reagent: filtering
       // by reagent means "any of that reagent's batches".
-      where.batch = { reagentId: query.reagentId };
+      where.batch = {
+        reagentId: query.reagentId,
+        // A non-admin must never read a deactivated reagent's or batch's
+        // name, lot number or history through this endpoint: those are
+        // "deleted" for them everywhere else (spec §6.1), and consumptions
+        // otherwise carries them straight through with no filter of its own.
+        ...(isAdmin ? {} : { active: true, reagent: { active: true } }),
+      };
+    } else if (!isAdmin) {
+      where.batch = { active: true, reagent: { active: true } };
     }
     if (query.madeById) {
       where.madeById = query.madeById;

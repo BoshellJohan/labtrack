@@ -42,7 +42,7 @@ export class ConsumptionsController {
     // but an administrator, so the flag is gated server-side rather than by
     // hiding a checkbox.
     assertIncludeInactiveAllowed(query.includeVoided, actor.role);
-    return this.consumptions.list(query);
+    return this.consumptions.list(query, actor.role === 'ADMIN');
   }
 
   @Patch(':id/void')

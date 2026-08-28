@@ -295,6 +295,25 @@ describe('Consumptions (e2e)', () => {
     expect(page.total).toBe(2);
   });
 
+  it('hides a deactivated reagent\'s consumptions from a non-admin', async () => {
+    await seedConsumptions();
+    await prisma.reagent.update({
+      where: { id: reagentId },
+      data: { active: false },
+    });
+
+    const token = await tokenFor('ana');
+    const response = await request(app.getHttpServer())
+      .get('/consumptions')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    const page = body<PaginatedResponse<ConsumptionDto>>(response);
+    expect(page.data).toHaveLength(0);
+    expect(page.total).toBe(0);
+    expect(JSON.stringify(page)).not.toContain('Acetona');
+  });
+
   it('lets an admin see voided consumptions with includeVoided', async () => {
     await seedConsumptions();
     const first = await prisma.consumption.findFirstOrThrow({
