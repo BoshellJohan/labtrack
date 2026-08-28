@@ -11,6 +11,7 @@ import {
 } from 'class-validator';
 import { UNITS, type Unit } from '@labtrack/shared';
 import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
+import { IsAfterOrEqual } from '../../common/validation/is-after-or-equal.validator';
 
 export const REAGENT_SORT_COLUMNS = ['name', 'casNumber', 'createdAt'] as const;
 
@@ -64,6 +65,9 @@ export class ListReagentsQueryDto extends PaginationQueryDto {
 
   @IsOptional()
   @IsDateString()
+  @IsAfterOrEqual('consumedFrom', {
+    message: 'consumedTo must not be earlier than consumedFrom',
+  })
   consumedTo?: string;
 
   @IsOptional()

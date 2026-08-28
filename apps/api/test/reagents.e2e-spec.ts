@@ -531,6 +531,26 @@ describe('Reagents (e2e)', () => {
       .expect(200);
   });
 
+  it('rejects a consumedTo earlier than consumedFrom', async () => {
+    const token = await tokenFor('admin');
+    await request(app.getHttpServer())
+      .get(
+        '/reagents?minConsumed=500&minConsumedUnit=ML&consumedFrom=2026-06-01&consumedTo=2026-01-01',
+      )
+      .set('Authorization', `Bearer ${token}`)
+      .expect(400);
+  });
+
+  it('accepts a consumedTo on or after consumedFrom', async () => {
+    const token = await tokenFor('admin');
+    await request(app.getHttpServer())
+      .get(
+        '/reagents?minConsumed=500&minConsumedUnit=ML&consumedFrom=2026-01-01&consumedTo=2026-06-01',
+      )
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+  });
+
   it('combines lowStock with a name filter rather than replacing it', async () => {
     const admin = await prisma.user.findUniqueOrThrow({
       where: { username: 'admin' },
