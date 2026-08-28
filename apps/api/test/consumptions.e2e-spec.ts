@@ -314,6 +314,29 @@ describe('Consumptions (e2e)', () => {
     expect(JSON.stringify(page)).not.toContain('Acetona');
   });
 
+  it("hides a deactivated batch's consumptions from a non-admin", async () => {
+    // The reagent-only case above pins `reagent: { active: true }` in the
+    // batch filter, but would still pass if the sibling `active: true` on
+    // the batch itself were dropped. Deactivating only the batch (leaving
+    // the reagent active) isolates that half of the constraint.
+    await seedConsumptions();
+    await prisma.reagentBatch.update({
+      where: { id: batchId },
+      data: { active: false },
+    });
+
+    const token = await tokenFor('ana');
+    const response = await request(app.getHttpServer())
+      .get('/consumptions')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    const page = body<PaginatedResponse<ConsumptionDto>>(response);
+    expect(page.data).toHaveLength(0);
+    expect(page.total).toBe(0);
+    expect(JSON.stringify(page)).not.toContain('Acetona');
+  });
+
   it('lets an admin see voided consumptions with includeVoided', async () => {
     await seedConsumptions();
     const first = await prisma.consumption.findFirstOrThrow({
