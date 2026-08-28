@@ -8,7 +8,7 @@
     "build": "ng build",
     "watch": "ng build --watch --configuration development",
     "pretest": "cd ../.. && npm run build -w packages/shared",
-    "test": "ng test",
+    "test": "cross-env TZ=America/Bogota ng test",
     "config:api-url": "node scripts/write-production-env.mjs"
   },
   "private": true,

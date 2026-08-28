@@ -107,13 +107,22 @@ describe('ConsumptionsComponent', () => {
 
     const store = TestBed.inject(ConsumptionsStore);
     http = TestBed.inject(HttpTestingController);
-    // setReagentId (unlike setPurpose) applies immediately, with no debounce,
-    // so the request it queues can be settled synchronously here.
+    // setReagentId and setDateRange (unlike setPurpose) apply immediately,
+    // with no debounce, so the request they queue can be settled
+    // synchronously here.
     store.setReagentId('r1');
+    // Local midnight 1 August — the calendar day a mat-datepicker would
+    // actually yield, not a UTC-midnight instant that hides a round-trip
+    // bug (see the store spec for why that fixture is wrong).
+    store.setDateRange(new Date(2026, 7, 1), null);
     // Settle the filter's own reload (the first visit to the screen) before
     // the component — the second visit — is created, so only one request is
-    // in flight at a time.
-    http.expectOne((req) => req.url === 'http://api.test/consumptions').flush(consumptionsPage(activeConsumption));
+    // in flight at a time. setReagentId and setDateRange each trigger their
+    // own reload, but PaginatedStore cancels the first in-flight reload when
+    // the second fires (see the "cancel in-flight reloads" fix), so only the
+    // most recent of the two is actually still open to flush.
+    const queued = http.match((req) => req.url === 'http://api.test/consumptions');
+    queued.filter((req) => !req.cancelled).forEach((req) => req.flush(consumptionsPage(activeConsumption)));
 
     fixture = TestBed.createComponent(ConsumptionsComponent);
     fixture.detectChanges();
@@ -121,13 +130,23 @@ describe('ConsumptionsComponent', () => {
 
     const consumptionsRequest = http.expectOne((req) => req.url === 'http://api.test/consumptions');
     // The request the retained filter drives must match what the input
-    // shows — this is the request setReagentId() above already queued.
+    // shows — this is the request setReagentId()/setDateRange() above
+    // already queued.
     expect(consumptionsRequest.request.params.get('reagentId')).toBe('r1');
+    expect(consumptionsRequest.request.params.get('from')).toBe('2026-08-01T00:00:00.000Z');
     consumptionsRequest.flush(consumptionsPage(activeConsumption));
     fixture.detectChanges();
 
     const component = fixture.componentInstance;
     expect(component.filtersForm.controls.reagentId.value).toBe('r1');
+    // Seeding the "from" control from the stored UTC-midnight ISO must show
+    // the same calendar day that was picked, 1 August — not 31 July, which
+    // is what `new Date(iso)` read with NativeDateAdapter's local getters
+    // would show at any timezone behind UTC.
+    const fromValue = component.filtersForm.controls.from.value as Date;
+    expect(fromValue.getFullYear()).toBe(2026);
+    expect(fromValue.getMonth()).toBe(7);
+    expect(fromValue.getDate()).toBe(1);
   });
 
   it('hides the void action from a non-admin', () => {

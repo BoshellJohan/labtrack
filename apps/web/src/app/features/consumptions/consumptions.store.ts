@@ -2,7 +2,7 @@ import { Injectable, computed } from '@angular/core';
 import { Observable, Subject, debounceTime, tap } from 'rxjs';
 import { ConsumptionDto, VoidConsumptionRequest } from '@labtrack/shared';
 import { PaginatedStore } from '../../shared/paginated-store';
-import { toUtcMidnightIso } from '../../shared/date/utc-midnight';
+import { fromUtcMidnightIso, toUtcMidnightIso } from '../../shared/date/utc-midnight';
 
 // Every value primitive: the store's serialisation boundary is cast, so a
 // Date or a nested object here would compile and fail at runtime.
@@ -23,15 +23,20 @@ export class ConsumptionsStore extends PaginatedStore<ConsumptionDto, Consumptio
   readonly purposeFilter = computed(() => this.filters().purpose ?? '');
   readonly reagentIdFilter = computed(() => this.filters().reagentId ?? '');
   readonly includeVoidedFilter = computed(() => this.filters().includeVoided ?? false);
-  // Stored as ISO strings (see ConsumptionsFilters above), so these convert
-  // back to a Date for the datepicker controls that seed from them.
+  // Stored as UTC-midnight ISO strings (see ConsumptionsFilters above), so
+  // these convert back to a Date for the datepicker controls that seed from
+  // them. fromUtcMidnightIso, not `new Date(iso)`: NativeDateAdapter reads a
+  // Date with local getters, so a plain `new Date(iso)` shows the wrong
+  // calendar day off UTC, and re-serializing that with toUtcMidnightIso
+  // would silently walk the stored filter back a day every time the screen
+  // reloads it (see utc-midnight.ts).
   readonly fromFilter = computed(() => {
     const from = this.filters().from;
-    return from ? new Date(from) : null;
+    return from ? fromUtcMidnightIso(from) : null;
   });
   readonly toFilter = computed(() => {
     const to = this.filters().to;
-    return to ? new Date(to) : null;
+    return to ? fromUtcMidnightIso(to) : null;
   });
 
   // Typing in the purpose field is the chattiest of these filters, so it is
