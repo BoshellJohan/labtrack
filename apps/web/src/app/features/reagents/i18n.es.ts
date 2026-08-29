@@ -8,6 +8,12 @@ export const REAGENTS_ES = {
     casNumber: 'Número CAS',
     location: 'Ubicación',
     allLocations: 'Todas las ubicaciones',
+    minConsumed: 'Consumo mayor a',
+    minConsumedUnit: 'Unidad',
+    consumedFrom: 'Consumido desde',
+    consumedTo: 'Consumido hasta',
+    unitRequired: 'Elige la unidad del consumo.',
+    apply: 'Aplicar',
   },
   columns: {
     name: 'Nombre',

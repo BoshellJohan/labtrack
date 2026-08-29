@@ -168,4 +168,63 @@ describe('ReagentsStore', () => {
     expect(store.error()).toBe(true);
     expect(store.loading()).toBe(false);
   });
+
+  it('sends the threshold with its unit, since neither means anything alone', () => {
+    store.setConsumptionFilter('500', 'ML', null, null);
+    const request = http.expectOne((r) => r.url === 'http://api.test/reagents');
+    expect(request.request.params.get('minConsumed')).toBe('500');
+    expect(request.request.params.get('minConsumedUnit')).toBe('ML');
+    request.flush(page);
+  });
+
+  it('drops both when the threshold is cleared, so a stale unit cannot linger', () => {
+    store.setConsumptionFilter('500', 'ML', null, null);
+    http.expectOne((r) => r.url === 'http://api.test/reagents').flush(page);
+
+    store.setConsumptionFilter('', 'ML', null, null);
+    const request = http.expectOne((r) => r.url === 'http://api.test/reagents');
+    // The API rejects a threshold without a unit but accepts a unit alone, so a
+    // lingering unit is harmless to it — it is the *user* who would be misled by
+    // a filter panel showing a unit that filters nothing.
+    expect(request.request.params.has('minConsumed')).toBe(false);
+    expect(request.request.params.has('minConsumedUnit')).toBe(false);
+    request.flush(page);
+  });
+
+  it('sends the consumption date range as UTC-midnight ISO strings', () => {
+    // Local midnight, deliberately: this is the fixture shape that catches a
+    // bare .toISOString(). A UTC-midnight fixture passes either way.
+    store.setConsumptionFilter('500', 'ML', new Date(2026, 7, 1), new Date(2026, 7, 31));
+    const request = http.expectOne((r) => r.url === 'http://api.test/reagents');
+    expect(request.request.params.get('consumedFrom')).toBe('2026-08-01T00:00:00.000Z');
+    expect(request.request.params.get('consumedTo')).toBe('2026-08-31T00:00:00.000Z');
+    request.flush(page);
+  });
+
+  it('preserves the other filters when the consumption filter changes', () => {
+    vi.useFakeTimers();
+    try {
+      store.setName('aceton');
+      vi.advanceTimersByTime(300);
+      http.expectOne((r) => r.url === 'http://api.test/reagents').flush(page);
+
+      store.setConsumptionFilter('500', 'ML', null, null);
+      const request = http.expectOne((r) => r.url === 'http://api.test/reagents');
+      expect(request.request.params.get('name')).toBe('aceton');
+      expect(request.request.params.get('minConsumed')).toBe('500');
+      request.flush(page);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('returns to page 1 when the consumption filter changes', () => {
+    store.setPage(3);
+    http.expectOne((r) => r.url === 'http://api.test/reagents').flush(page);
+
+    store.setConsumptionFilter('500', 'ML', null, null);
+    const request = http.expectOne((r) => r.url === 'http://api.test/reagents');
+    expect(request.request.params.get('page')).toBe('1');
+    request.flush(page);
+  });
 });

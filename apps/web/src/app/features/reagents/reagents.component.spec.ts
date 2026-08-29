@@ -314,4 +314,20 @@ describe('ReagentsComponent', () => {
     // next to a filtered table, with no way to clear it, is the defect.
     expect(fixture.componentInstance.casNumberControl.value).toBe('7647-01-0');
   });
+
+  it('does not send a consumption filter while the unit is missing', () => {
+    createComponent({
+      ...baseReagent,
+      stockByUnit: [{ unit: 'ML', total: '500.0000' }],
+    });
+    const component = fixture.componentInstance;
+
+    component.filtersForm.controls.minConsumed.setValue('500');
+    component.applyConsumptionFilter();
+
+    // Without this the user gets a 400 from an endpoint they cannot see, and
+    // the table simply stops updating with no explanation.
+    http.expectNone((r) => r.url === 'http://api.test/reagents' && r.params.has('minConsumed'));
+    expect(component.filtersForm.controls.minConsumedUnit.hasError('required')).toBe(true);
+  });
 });
