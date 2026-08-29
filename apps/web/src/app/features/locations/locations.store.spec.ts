@@ -1,8 +1,20 @@
 import { TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { LocationDto } from '@labtrack/shared';
 import { LocationsStore } from './locations.store';
 import { API_URL } from '../../core/api/api.config';
+
+function pageOf(n: number, prefix: string): LocationDto[] {
+  return Array.from({ length: n }, (_, i) => ({
+    id: `${prefix}-${i}`,
+    name: `${prefix} ${i}`,
+    description: null,
+    active: true,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+  }));
+}
 
 const page = {
   data: [
@@ -120,5 +132,28 @@ describe('LocationsStore', () => {
     http.expectOne((req) => req.url === 'http://api.test/locations').flush(page);
 
     expect(store.error()).toBe(false);
+  });
+
+  it('fetches every page, so locations past the first are not silently missing', () => {
+    const locations: LocationDto[] = [];
+    store.listActive().subscribe((result) => locations.push(...result));
+
+    const first = http.expectOne((r) => r.url === 'http://api.test/locations' && r.params.get('page') === '1');
+    first.flush({ data: pageOf(100, 'A'), total: 150, page: 1, pageSize: 100, totalPages: 2 });
+
+    const second = http.expectOne((r) => r.url === 'http://api.test/locations' && r.params.get('page') === '2');
+    second.flush({ data: pageOf(50, 'B'), total: 150, page: 2, pageSize: 100, totalPages: 2 });
+
+    expect(locations).toHaveLength(150);
+  });
+
+  it('makes exactly one request when everything fits on one page', () => {
+    store.listActive().subscribe();
+    http
+      .expectOne((r) => r.url === 'http://api.test/locations' && r.params.get('page') === '1')
+      .flush({ data: pageOf(12, 'A'), total: 12, page: 1, pageSize: 100, totalPages: 1 });
+
+    // The common case must not pay for the uncommon one.
+    http.expectNone((r) => r.url === 'http://api.test/locations');
   });
 });

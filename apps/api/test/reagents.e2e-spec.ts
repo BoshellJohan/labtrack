@@ -107,6 +107,62 @@ describe('Reagents (e2e)', () => {
       .expect(400);
   });
 
+  it('rejects a create with a null optional field, since there is nothing to clear yet', async () => {
+    await request(app.getHttpServer())
+      .post('/reagents')
+      .set('Authorization', `Bearer ${await tokenFor('admin')}`)
+      .send({ name: 'Acetona', casNumber: '67-64-1', reference: null })
+      .expect(400);
+  });
+
+  it('clears an optional field when it is sent as null', async () => {
+    const admin = await prisma.user.findUniqueOrThrow({
+      where: { username: 'admin' },
+    });
+    const reagent = await prisma.reagent.create({
+      data: {
+        name: 'Acetona',
+        casNumber: '67-64-1',
+        reference: 'REF-1',
+        madeById: admin.id,
+      },
+    });
+
+    const token = await tokenFor('admin');
+    const response = await request(app.getHttpServer())
+      .patch(`/reagents/${reagent.id}`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ reference: null })
+      .expect(200);
+
+    expect(body<ReagentDto>(response).reference).toBeNull();
+  });
+
+  it('leaves an optional field untouched when it is omitted', async () => {
+    const admin = await prisma.user.findUniqueOrThrow({
+      where: { username: 'admin' },
+    });
+    const reagent = await prisma.reagent.create({
+      data: {
+        name: 'Acetona',
+        casNumber: '67-64-1',
+        reference: 'REF-1',
+        madeById: admin.id,
+      },
+    });
+
+    const token = await tokenFor('admin');
+    const response = await request(app.getHttpServer())
+      .patch(`/reagents/${reagent.id}`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ name: 'Acetona pura' })
+      .expect(200);
+
+    // This is the test that stops the fix from becoming a worse bug: if null
+    // and undefined were collapsed, editing the name would wipe the reference.
+    expect(body<ReagentDto>(response).reference).toBe('REF-1');
+  });
+
   it('finds a reagent by a partial, differently-cased name', async () => {
     const token = await tokenFor('admin');
     await request(app.getHttpServer())
@@ -499,6 +555,68 @@ describe('Reagents (e2e)', () => {
       .expect(400);
   });
 
+  it('rejects minConsumed without a unit, because a quantity with no unit cannot be compared', async () => {
+    const token = await tokenFor('admin');
+    await request(app.getHttpServer())
+      .get('/reagents?minConsumed=500')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(400);
+  });
+
+  it('rejects a minConsumedUnit outside the Unit enum', async () => {
+    const token = await tokenFor('admin');
+    await request(app.getHttpServer())
+      .get('/reagents?minConsumed=500&minConsumedUnit=GALLON')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(400);
+  });
+
+  it('rejects a non-decimal minConsumed', async () => {
+    const token = await tokenFor('admin');
+    await request(app.getHttpServer())
+      .get('/reagents?minConsumed=mucho&minConsumedUnit=ML')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(400);
+  });
+
+  it('accepts a unit on its own, which simply narrows nothing', async () => {
+    const token = await tokenFor('admin');
+    await request(app.getHttpServer())
+      .get('/reagents?minConsumedUnit=ML')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+  });
+
+  it('rejects a consumedTo earlier than consumedFrom', async () => {
+    const token = await tokenFor('admin');
+    await request(app.getHttpServer())
+      .get(
+        '/reagents?minConsumed=500&minConsumedUnit=ML&consumedFrom=2026-06-01&consumedTo=2026-01-01',
+      )
+      .set('Authorization', `Bearer ${token}`)
+      .expect(400);
+  });
+
+  it('accepts a consumedTo on or after consumedFrom', async () => {
+    const token = await tokenFor('admin');
+    await request(app.getHttpServer())
+      .get(
+        '/reagents?minConsumed=500&minConsumedUnit=ML&consumedFrom=2026-01-01&consumedTo=2026-06-01',
+      )
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+  });
+
+  it('accepts a range whose bounds are the same instant, which is a legitimate single-day query', async () => {
+    const token = await tokenFor('admin');
+    await request(app.getHttpServer())
+      .get(
+        '/reagents?minConsumed=500&minConsumedUnit=ML&consumedFrom=2026-08-01T00:00:00.000Z&consumedTo=2026-08-01T00:00:00.000Z',
+      )
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+  });
+
   it('combines lowStock with a name filter rather than replacing it', async () => {
     const admin = await prisma.user.findUniqueOrThrow({
       where: { username: 'admin' },
@@ -587,5 +705,217 @@ describe('Reagents (e2e)', () => {
       .expect(200);
 
     expect(body<ReagentDto>(response).active).toBe(false);
+  });
+
+  describe('consumption threshold filter', () => {
+    // Acetona: an ML batch consumed 350 + 250 = 600 across two consumptions
+    // (2026-08-01 and 2026-08-20). Etanol: an ML batch consumed only 100.
+    // Metanol: an L batch consumed 900 — a different unit, so it must never
+    // be summed together with an ML threshold.
+    async function seedConsumptionFixture() {
+      const admin = await prisma.user.findUniqueOrThrow({
+        where: { username: 'admin' },
+      });
+      const location = await prisma.location.create({
+        data: { name: 'Estante consumo', madeById: admin.id },
+      });
+
+      const acetona = await prisma.reagent.create({
+        data: { name: 'Acetona', casNumber: '67-64-1', madeById: admin.id },
+      });
+      const etanol = await prisma.reagent.create({
+        data: { name: 'Etanol', casNumber: '64-17-5', madeById: admin.id },
+      });
+      const metanol = await prisma.reagent.create({
+        data: { name: 'Metanol', casNumber: '67-56-1', madeById: admin.id },
+      });
+
+      const acetonaBatch = await prisma.reagentBatch.create({
+        data: {
+          reagentId: acetona.id,
+          locationId: location.id,
+          lotNumber: 'A-1',
+          entryDate: new Date('2026-01-01T00:00:00.000Z'),
+          initialStock: '1000',
+          currentStock: '400',
+          unit: 'ML',
+          madeById: admin.id,
+        },
+      });
+      const etanolBatch = await prisma.reagentBatch.create({
+        data: {
+          reagentId: etanol.id,
+          locationId: location.id,
+          lotNumber: 'E-1',
+          entryDate: new Date('2026-01-01T00:00:00.000Z'),
+          initialStock: '1000',
+          currentStock: '900',
+          unit: 'ML',
+          madeById: admin.id,
+        },
+      });
+      const metanolBatch = await prisma.reagentBatch.create({
+        data: {
+          reagentId: metanol.id,
+          locationId: location.id,
+          lotNumber: 'M-1',
+          entryDate: new Date('2026-01-01T00:00:00.000Z'),
+          initialStock: '1000',
+          currentStock: '100',
+          unit: 'L',
+          madeById: admin.id,
+        },
+      });
+
+      const acetonaConsumptionEarly = await prisma.consumption.create({
+        data: {
+          batchId: acetonaBatch.id,
+          consumedAt: new Date('2026-08-01T00:00:00.000Z'),
+          quantity: '350',
+          purpose: 'Práctica 1',
+          madeById: admin.id,
+        },
+      });
+      const acetonaConsumptionLate = await prisma.consumption.create({
+        data: {
+          batchId: acetonaBatch.id,
+          consumedAt: new Date('2026-08-20T00:00:00.000Z'),
+          quantity: '250',
+          purpose: 'Práctica 2',
+          madeById: admin.id,
+        },
+      });
+      await prisma.consumption.create({
+        data: {
+          batchId: etanolBatch.id,
+          consumedAt: new Date('2026-08-05T00:00:00.000Z'),
+          quantity: '100',
+          purpose: 'Práctica 3',
+          madeById: admin.id,
+        },
+      });
+      await prisma.consumption.create({
+        data: {
+          batchId: metanolBatch.id,
+          consumedAt: new Date('2026-08-05T00:00:00.000Z'),
+          quantity: '900',
+          purpose: 'Práctica 4',
+          madeById: admin.id,
+        },
+      });
+
+      return {
+        adminId: admin.id,
+        acetonaConsumptionEarly,
+        acetonaConsumptionLate,
+      };
+    }
+
+    it('returns only reagents whose consumption in that unit exceeds the threshold', async () => {
+      await seedConsumptionFixture();
+      const token = await tokenFor('admin');
+      const response = await request(app.getHttpServer())
+        .get('/reagents?minConsumed=500&minConsumedUnit=ML')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+
+      const page = body<PaginatedResponse<ReagentDto>>(response);
+      expect(page.data.map((r) => r.name)).toEqual(['Acetona']);
+      expect(page.total).toBe(1);
+    });
+
+    it('never sums across units: 900 L does not satisfy a 500 mL threshold', async () => {
+      await seedConsumptionFixture();
+      const token = await tokenFor('admin');
+      const response = await request(app.getHttpServer())
+        .get('/reagents?minConsumed=500&minConsumedUnit=ML')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+
+      expect(
+        body<PaginatedResponse<ReagentDto>>(response).data.map((r) => r.name),
+      ).not.toContain('Metanol');
+    });
+
+    it('sums several consumptions of the same batch rather than taking the largest', async () => {
+      // Acetona's 600 is 350 + 250. An implementation using MAX instead of SUM
+      // would return nothing here, and an implementation taking only the first
+      // consumption would too.
+      await seedConsumptionFixture();
+      const token = await tokenFor('admin');
+      const response = await request(app.getHttpServer())
+        .get('/reagents?minConsumed=500&minConsumedUnit=ML')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+
+      expect(
+        body<PaginatedResponse<ReagentDto>>(response).data.map((r) => r.name),
+      ).toEqual(['Acetona']);
+    });
+
+    it('bounds the sum by the date range, so consumptions outside it do not count', async () => {
+      // Acetona's two consumptions are dated 2026-08-01 and 2026-08-20. A range
+      // covering only August 1st leaves 350, below the threshold.
+      await seedConsumptionFixture();
+      const token = await tokenFor('admin');
+      const response = await request(app.getHttpServer())
+        .get(
+          '/reagents?minConsumed=500&minConsumedUnit=ML' +
+            '&consumedFrom=2026-08-01T00:00:00.000Z&consumedTo=2026-08-02T00:00:00.000Z',
+        )
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+
+      expect(body<PaginatedResponse<ReagentDto>>(response).data).toEqual([]);
+    });
+
+    it('ignores voided consumptions', async () => {
+      // Void one of Acetona's two consumptions, leaving 350 of 600.
+      // A void returns stock; it must also stop counting toward this filter.
+      const { adminId, acetonaConsumptionLate } =
+        await seedConsumptionFixture();
+      await prisma.consumption.update({
+        where: { id: acetonaConsumptionLate.id },
+        data: {
+          active: false,
+          voidReason: 'Registrado por error',
+          voidedAt: new Date(),
+          voidedById: adminId,
+        },
+      });
+
+      const token = await tokenFor('admin');
+      const response = await request(app.getHttpServer())
+        .get('/reagents?minConsumed=500&minConsumedUnit=ML')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+
+      expect(body<PaginatedResponse<ReagentDto>>(response).data).toEqual([]);
+    });
+
+    it('composes with the simple filters instead of replacing them', async () => {
+      // Acetona qualifies on consumption but the name filter excludes it.
+      await seedConsumptionFixture();
+      const token = await tokenFor('admin');
+      const response = await request(app.getHttpServer())
+        .get('/reagents?minConsumed=500&minConsumedUnit=ML&name=etan')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+
+      expect(body<PaginatedResponse<ReagentDto>>(response).data).toEqual([]);
+    });
+
+    it('returns an empty page when nothing qualifies, not the unfiltered list', async () => {
+      await seedConsumptionFixture();
+      const token = await tokenFor('admin');
+      const response = await request(app.getHttpServer())
+        .get('/reagents?minConsumed=99999&minConsumedUnit=ML')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+
+      const page = body<PaginatedResponse<ReagentDto>>(response);
+      expect(page.data).toEqual([]);
+      expect(page.total).toBe(0);
+    });
   });
 });

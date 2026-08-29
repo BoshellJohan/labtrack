@@ -110,6 +110,52 @@ describe('Locations (e2e)', () => {
       .expect(400);
   });
 
+  it('rejects a create with a null optional field, since there is nothing to clear yet', async () => {
+    await request(app.getHttpServer())
+      .post('/locations')
+      .set('Authorization', `Bearer ${await tokenFor('admin')}`)
+      .send({ name: 'Estante C', description: null })
+      .expect(400);
+  });
+
+  it('clears an optional field when it is sent as null', async () => {
+    const admin = await prisma.user.findUniqueOrThrow({
+      where: { username: 'admin' },
+    });
+    const location = await prisma.location.create({
+      data: { name: 'Estante A', description: 'Pasillo 1', madeById: admin.id },
+    });
+
+    const token = await tokenFor('admin');
+    const response = await request(app.getHttpServer())
+      .patch(`/locations/${location.id}`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ description: null })
+      .expect(200);
+
+    expect(body<LocationDto>(response).description).toBeNull();
+  });
+
+  it('leaves an optional field untouched when it is omitted', async () => {
+    const admin = await prisma.user.findUniqueOrThrow({
+      where: { username: 'admin' },
+    });
+    const location = await prisma.location.create({
+      data: { name: 'Estante A', description: 'Pasillo 1', madeById: admin.id },
+    });
+
+    const token = await tokenFor('admin');
+    const response = await request(app.getHttpServer())
+      .patch(`/locations/${location.id}`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ name: 'Estante A renovado' })
+      .expect(200);
+
+    // This is the test that stops the fix from becoming a worse bug: if null
+    // and undefined were collapsed, editing the name would wipe the description.
+    expect(body<LocationDto>(response).description).toBe('Pasillo 1');
+  });
+
   it('deactivates without deleting the row', async () => {
     const token = await tokenFor('admin');
     const created = body<LocationDto>(

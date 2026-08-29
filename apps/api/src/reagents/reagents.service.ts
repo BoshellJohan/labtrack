@@ -76,6 +76,10 @@ export class ReagentsService {
       data: {
         name: dto.name,
         casNumber: dto.casNumber,
+        // `?? undefined` would defeat the whole point: it turns an explicit
+        // null back into "leave unchanged". The field is passed through
+        // as-is, and Prisma treats null as SET NULL and undefined as
+        // omitted.
         reference: dto.reference,
         description: dto.description,
         dataSheetUrl: dto.dataSheetUrl,

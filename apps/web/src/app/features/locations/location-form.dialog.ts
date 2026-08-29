@@ -59,6 +59,9 @@ export class LocationFormDialog {
       return;
     }
     const { name, description } = this.form.getRawValue();
-    this.dialogRef.close({ name, description: description || undefined });
+    // A blank field means "clear it" when editing (null), but a create has
+    // nothing to clear yet, so it stays omitted (undefined).
+    const blank = this.data.location ? null : undefined;
+    this.dialogRef.close({ name, description: description || blank });
   }
 }

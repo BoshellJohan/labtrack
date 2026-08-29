@@ -2,8 +2,10 @@ import { ChangeDetectionStrategy, Component, OnInit, effect, inject, signal } fr
 import { DatePipe } from '@angular/common';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { HttpErrorResponse } from '@angular/common/http';
-import { FormControl, ReactiveFormsModule } from '@angular/forms';
+import { FormBuilder, FormControl, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
+import { provideNativeDateAdapter } from '@angular/material/core';
+import { MatDatepickerModule } from '@angular/material/datepicker';
 import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
@@ -12,13 +14,14 @@ import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatSelectModule } from '@angular/material/select';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatTableModule } from '@angular/material/table';
-import { distinctUntilChanged } from 'rxjs';
+import { Subject, debounceTime, distinctUntilChanged } from 'rxjs';
 import {
   CreateBatchRequest,
   CreateReagentRequest,
   LocationDto,
   ReagentBatchDto,
   ReagentDto,
+  UNITS,
   Unit,
   UpdateReagentRequest,
 } from '@labtrack/shared';
@@ -47,12 +50,17 @@ type ExpiryStatus = 'expired' | 'warning' | 'ok';
     MatInputModule,
     MatSelectModule,
     MatButtonModule,
+    MatDatepickerModule,
     MatDialogModule,
     MatProgressBarModule,
   ],
   // Scoped here rather than app-wide: see LocationsComponent for why this
   // costs nothing in the eager bundle.
-  providers: [{ provide: MatPaginatorIntl, useFactory: createSpanishPaginatorIntl }, BatchesStore],
+  providers: [
+    { provide: MatPaginatorIntl, useFactory: createSpanishPaginatorIntl },
+    BatchesStore,
+    provideNativeDateAdapter(),
+  ],
   template: `
     <section class="page">
       <header>
@@ -84,6 +92,39 @@ type ExpiryStatus = 'expired' | 'warning' | 'ok';
             }
           </mat-select>
         </mat-form-field>
+
+        <div class="consumption-filters" [formGroup]="filtersForm">
+          <mat-form-field appearance="outline">
+            <mat-label>{{ text.filters.minConsumed }}</mat-label>
+            <input matInput formControlName="minConsumed" />
+          </mat-form-field>
+
+          <mat-form-field appearance="outline">
+            <mat-label>{{ text.filters.minConsumedUnit }}</mat-label>
+            <mat-select formControlName="minConsumedUnit">
+              @for (unit of units; track unit) {
+                <mat-option [value]="unit">{{ text.units[unit] }}</mat-option>
+              }
+            </mat-select>
+            @if (filtersForm.controls.minConsumedUnit.hasError('required')) {
+              <mat-error>{{ text.filters.unitRequired }}</mat-error>
+            }
+          </mat-form-field>
+
+          <mat-form-field appearance="outline">
+            <mat-label>{{ text.filters.consumedFrom }}</mat-label>
+            <input matInput [matDatepicker]="consumedFromPicker" formControlName="consumedFrom" />
+            <mat-datepicker-toggle matIconSuffix [for]="consumedFromPicker" />
+            <mat-datepicker #consumedFromPicker />
+          </mat-form-field>
+
+          <mat-form-field appearance="outline">
+            <mat-label>{{ text.filters.consumedTo }}</mat-label>
+            <input matInput [matDatepicker]="consumedToPicker" formControlName="consumedTo" />
+            <mat-datepicker-toggle matIconSuffix [for]="consumedToPicker" />
+            <mat-datepicker #consumedToPicker />
+          </mat-form-field>
+        </div>
       </div>
 
       @if (store.loading()) {
@@ -244,6 +285,7 @@ type ExpiryStatus = 'expired' | 'warning' | 'ok';
     header { display: flex; align-items: center; justify-content: space-between; }
     .filters { display: flex; gap: 1rem; flex-wrap: wrap; }
     .filters mat-form-field { min-width: 14rem; }
+    .consumption-filters { display: flex; gap: 1rem; flex-wrap: wrap; align-items: flex-start; }
     table { width: 100%; }
     .empty { color: rgba(0, 0, 0, 0.6); }
     .detail-row td { border-bottom-width: 0; }
@@ -259,17 +301,32 @@ export class ReagentsComponent implements OnInit {
   readonly auth = inject(AuthService);
   private readonly dialog = inject(MatDialog);
   private readonly snackBar = inject(MatSnackBar);
+  private readonly fb = inject(FormBuilder);
 
   readonly text = REAGENTS_ES;
   readonly columns = ['name', 'casNumber', 'reference', 'stock', 'batchCount', 'status', 'actions'];
   readonly batchColumns = ['lotNumber', 'entryDate', 'expirationDate', 'stock', 'location'];
+  readonly units = UNITS;
 
   readonly nameControl = new FormControl('', { nonNullable: true });
   readonly casNumberControl = new FormControl('', { nonNullable: true });
   readonly locationControl = new FormControl('', { nonNullable: true });
 
+  readonly filtersForm = this.fb.nonNullable.group({
+    minConsumed: [''],
+    minConsumedUnit: [''],
+    consumedFrom: this.fb.control<Date | null>(null),
+    consumedTo: this.fb.control<Date | null>(null),
+  });
+
   readonly expandedId = signal<string | null>(null);
   readonly locationOptions = signal<LocationDto[]>([]);
+
+  // The threshold is the chattiest of these four (a text field), so it is
+  // debounced the same way nameControl's value reaches ReagentsStore.setName
+  // — everything else here (the unit select, the two datepickers) is a
+  // discrete choice and applies immediately.
+  private readonly minConsumedInput$ = new Subject<void>();
 
   constructor() {
     // The store itself debounces the name filter (see ReagentsStore), so no
@@ -285,6 +342,34 @@ export class ReagentsComponent implements OnInit {
     this.locationControl.valueChanges
       .pipe(distinctUntilChanged(), takeUntilDestroyed())
       .subscribe((value) => this.store.setLocationId(value));
+
+    // The unit is required only while a threshold is present — the same rule
+    // the API enforces (a threshold without a unit is rejected), applied
+    // client-side so the user learns before a round trip rather than from a
+    // 400 they cannot see.
+    this.filtersForm.controls.minConsumed.valueChanges
+      .pipe(takeUntilDestroyed())
+      .subscribe((minConsumed) => {
+        const unitControl = this.filtersForm.controls.minConsumedUnit;
+        unitControl.setValidators(minConsumed ? Validators.required : []);
+        unitControl.updateValueAndValidity({ emitEvent: false });
+        this.minConsumedInput$.next();
+      });
+    this.minConsumedInput$
+      .pipe(debounceTime(300), takeUntilDestroyed())
+      .subscribe(() => this.tryApplyConsumptionFilter());
+
+    // The unit select and the two datepickers are discrete choices, not
+    // typing, so they apply straight away — no debounce needed.
+    this.filtersForm.controls.minConsumedUnit.valueChanges
+      .pipe(distinctUntilChanged(), takeUntilDestroyed())
+      .subscribe(() => this.tryApplyConsumptionFilter());
+    this.filtersForm.controls.consumedFrom.valueChanges
+      .pipe(takeUntilDestroyed())
+      .subscribe(() => this.tryApplyConsumptionFilter());
+    this.filtersForm.controls.consumedTo.valueChanges
+      .pipe(takeUntilDestroyed())
+      .subscribe(() => this.tryApplyConsumptionFilter());
 
     effect(() => {
       if (this.store.error()) {
@@ -310,12 +395,46 @@ export class ReagentsComponent implements OnInit {
     this.nameControl.setValue(this.store.nameFilter(), { emitEvent: false });
     this.casNumberControl.setValue(this.store.casNumberFilter(), { emitEvent: false });
     this.locationControl.setValue(this.store.locationIdFilter(), { emitEvent: false });
+    this.filtersForm.controls.minConsumed.setValue(this.store.minConsumedFilter(), {
+      emitEvent: false,
+    });
+    this.filtersForm.controls.minConsumedUnit.setValue(this.store.minConsumedUnitFilter(), {
+      emitEvent: false,
+    });
+    this.filtersForm.controls.consumedFrom.setValue(this.store.consumedFromFilter(), {
+      emitEvent: false,
+    });
+    this.filtersForm.controls.consumedTo.setValue(this.store.consumedToFilter(), {
+      emitEvent: false,
+    });
+    if (this.store.minConsumedFilter()) {
+      this.filtersForm.controls.minConsumedUnit.setValidators(Validators.required);
+    }
 
     this.store.reload();
     // listActive() bypasses LocationsStore's own paginated view state: a
     // setPageSize() call here previously leaked into /ubicaciones, since
     // that store is shared (providedIn: 'root').
     this.locationsStore.listActive().subscribe((locations) => this.locationOptions.set(locations));
+  }
+
+  // Threshold present + unit missing: surface unitRequired and do not call
+  // the store — the user would otherwise get a 400 from an endpoint they
+  // cannot see. Threshold cleared: apply anyway, since setConsumptionFilter
+  // already drops the unit once the threshold is empty, so this is exactly
+  // how a cleared filter is supposed to reach the store. Not a manual
+  // "Aplicar" step: reintroducing one would let the form show an empty
+  // threshold next to a table still filtered on a stale one, which is the
+  // exact stale-filter-panel defect this screen already fixed once.
+  private tryApplyConsumptionFilter(): void {
+    const unitControl = this.filtersForm.controls.minConsumedUnit;
+    if (unitControl.invalid) {
+      unitControl.markAsTouched();
+      return;
+    }
+    const { minConsumed, minConsumedUnit, consumedFrom, consumedTo } =
+      this.filtersForm.getRawValue();
+    this.store.setConsumptionFilter(minConsumed, minConsumedUnit, consumedFrom, consumedTo);
   }
 
   onPage(event: PageEvent): void {

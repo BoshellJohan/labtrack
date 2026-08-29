@@ -3,9 +3,12 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { MatDialog } from '@angular/material/dialog';
 import { MatSnackBar } from '@angular/material/snack-bar';
+import { of } from 'rxjs';
+import { vi } from 'vitest';
 import { ConsumptionsComponent } from './consumptions.component';
 import { ConsumptionsStore } from './consumptions.store';
-import { CONSUMPTIONS_ES } from './i18n.es';
+import { CONSUMPTIONS_ES, VOID_CONSUMPTION_ES } from './i18n.es';
+import { COMMON_ES } from '../../shared/i18n/es';
 import { AuthService } from '../../core/auth/auth.service';
 import { API_URL } from '../../core/api/api.config';
 
@@ -223,5 +226,103 @@ describe('ConsumptionsComponent', () => {
 
     const text = fixture.nativeElement.textContent as string;
     expect(text).toContain('Anulado por Carlos Díaz: Registrado por error');
+  });
+
+  describe('void error handling', () => {
+    let component: ConsumptionsComponent;
+    let dialogOpenSpy: ReturnType<typeof vi.fn>;
+    let snackBarSpy: ReturnType<typeof vi.fn>;
+
+    function openVoidDialogAndConfirm(target: ConsumptionsComponent, reason: string): void {
+      dialogOpenSpy.mockReturnValue({ afterClosed: () => of({ voidReason: reason }) });
+      target.openVoidDialog(activeConsumption as never);
+    }
+
+    beforeEach(() => {
+      dialogOpenSpy = vi.fn();
+      snackBarSpy = vi.fn();
+      TestBed.configureTestingModule({
+        imports: [ConsumptionsComponent],
+        providers: [
+          provideHttpClient(),
+          provideHttpClientTesting(),
+          { provide: API_URL, useValue: 'http://api.test' },
+          {
+            provide: AuthService,
+            useValue: { isAdmin: () => true, currentUser: () => null, isAuthenticated: () => true },
+          },
+          { provide: MatDialog, useValue: { open: dialogOpenSpy } },
+          { provide: MatSnackBar, useValue: { open: snackBarSpy } },
+        ],
+      });
+      // MatDialogModule (imported by the standalone component) re-registers
+      // MatDialog as a module-level provider, which otherwise wins over the
+      // useValue above — overrideProvider forces the stub to win instead.
+      TestBed.overrideProvider(MatDialog, { useValue: { open: dialogOpenSpy } });
+      TestBed.overrideProvider(MatSnackBar, { useValue: { open: snackBarSpy } });
+      fixture = TestBed.createComponent(ConsumptionsComponent);
+      http = TestBed.inject(HttpTestingController);
+      component = fixture.componentInstance;
+      fixture.detectChanges();
+      http.expectOne((r) => r.url === 'http://api.test/reagents').flush(emptyReagentsPage());
+      http
+        .expectOne((r) => r.url === 'http://api.test/consumptions')
+        .flush(consumptionsPage(activeConsumption));
+      fixture.detectChanges();
+    });
+
+    afterEach(() => http.verify());
+
+    it('tells the user someone else voided it first when the API reports a write conflict', () => {
+      openVoidDialogAndConfirm(component, 'Registrado por error');
+      http.expectOne((r) => r.method === 'PATCH').flush(
+        { statusCode: 409, code: 'WRITE_CONFLICT' },
+        { status: 409, statusText: 'Conflict' },
+      );
+
+      expect(snackBarSpy).toHaveBeenCalledWith(
+        VOID_CONSUMPTION_ES.conflict,
+        COMMON_ES.accept,
+        expect.anything(),
+      );
+
+      // The row on screen is stale after a conflict, so the list is reloaded
+      // rather than left showing state the API has already moved past.
+      http.expectOne((r) => r.url === 'http://api.test/consumptions').flush(consumptionsPage(activeConsumption));
+    });
+
+    it('tells the user it was already voided when the API says so', () => {
+      openVoidDialogAndConfirm(component, 'Registrado por error');
+      http.expectOne((r) => r.method === 'PATCH').flush(
+        { message: 'This consumption is already voided' },
+        { status: 400, statusText: 'Bad Request' },
+      );
+
+      expect(snackBarSpy).toHaveBeenCalledWith(
+        VOID_CONSUMPTION_ES.alreadyVoided,
+        COMMON_ES.accept,
+        expect.anything(),
+      );
+
+      http.expectOne((r) => r.url === 'http://api.test/consumptions').flush(consumptionsPage(activeConsumption));
+    });
+
+    it('falls back to the generic message for anything else', () => {
+      openVoidDialogAndConfirm(component, 'Registrado por error');
+      http.expectOne((r) => r.method === 'PATCH').flush(null, {
+        status: 500,
+        statusText: 'Server Error',
+      });
+
+      expect(snackBarSpy).toHaveBeenCalledWith(
+        VOID_CONSUMPTION_ES.failure,
+        COMMON_ES.accept,
+        expect.anything(),
+      );
+
+      // Unlike the 409/400 cases, an unknown failure gives no reason to
+      // think the data changed, so no reload request should be queued.
+      http.expectNone((r) => r.url === 'http://api.test/consumptions');
+    });
   });
 });

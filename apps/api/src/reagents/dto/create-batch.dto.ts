@@ -1,11 +1,11 @@
 import {
   IsDateString,
   IsIn,
-  IsOptional,
   IsString,
   IsUUID,
   Matches,
   MaxLength,
+  ValidateIf,
 } from 'class-validator';
 import { UNITS } from '@labtrack/shared';
 import type { Unit } from '@labtrack/shared';
@@ -18,7 +18,11 @@ export class CreateBatchDto {
   @IsDateString()
   entryDate!: string;
 
-  @IsOptional()
+  // A create has nothing to clear yet, so `null` is rejected here, mirroring
+  // create-reagent.dto.ts and create-location.dto.ts: `ValidateIf` only
+  // skips validation when the value is omitted (`undefined`); an explicit
+  // `null` still runs `@IsDateString()` and fails.
+  @ValidateIf((_, value) => value !== undefined)
   @IsDateString()
   expirationDate?: string;
 

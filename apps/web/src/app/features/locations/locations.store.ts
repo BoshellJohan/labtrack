@@ -1,6 +1,11 @@
 import { Injectable, computed } from '@angular/core';
-import { Observable, map, tap } from 'rxjs';
-import { CreateLocationRequest, LocationDto, UpdateLocationRequest } from '@labtrack/shared';
+import { EMPTY, Observable, expand, reduce, tap } from 'rxjs';
+import {
+  CreateLocationRequest,
+  LocationDto,
+  PaginatedResponse,
+  UpdateLocationRequest,
+} from '@labtrack/shared';
 import { PaginatedStore } from '../../shared/paginated-store';
 
 interface LocationsFilters {
@@ -45,11 +50,23 @@ export class LocationsStore extends PaginatedStore<LocationDto, LocationsFilters
   // setPageSize() here previously leaked into whatever component was
   // currently showing /ubicaciones, since this store is providedIn: 'root'
   // and shared by both screens. 100 is the API's own page-size ceiling
-  // (PaginationQueryDto @Max(100)); a deployment with more active locations
-  // than that will still be missing some from the picker.
+  // (PaginationQueryDto @Max(100)).
+  //
+  // The picker needs every active location, and the API caps a page at 100
+  // (spec §5.3). Follow the pagination rather than truncating: a laboratory
+  // with more than 100 locations would otherwise get a picker that silently
+  // cannot reach the rest.
   listActive(): Observable<LocationDto[]> {
-    return this.api
-      .getPage<LocationDto>(this.path, { page: 1, pageSize: 100 })
-      .pipe(map((response) => response.data));
+    return this.api.getPage<LocationDto>(this.path, { page: 1, pageSize: 100 }).pipe(
+      expand((response) =>
+        response.page < response.totalPages
+          ? this.api.getPage<LocationDto>(this.path, { page: response.page + 1, pageSize: 100 })
+          : EMPTY,
+      ),
+      reduce<PaginatedResponse<LocationDto>, LocationDto[]>(
+        (acc, response) => acc.concat(response.data),
+        [],
+      ),
+    );
   }
 }

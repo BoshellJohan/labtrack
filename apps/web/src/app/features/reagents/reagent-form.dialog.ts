@@ -82,12 +82,15 @@ export class ReagentFormDialog {
       return;
     }
     const { name, casNumber, reference, description, dataSheetUrl } = this.form.getRawValue();
+    // A blank field means "clear it" when editing (null), but a create has
+    // nothing to clear yet, so it stays omitted (undefined).
+    const blank = this.data.reagent ? null : undefined;
     this.dialogRef.close({
       name,
       casNumber,
-      reference: reference || undefined,
-      description: description || undefined,
-      dataSheetUrl: dataSheetUrl || undefined,
+      reference: reference || blank,
+      description: description || blank,
+      dataSheetUrl: dataSheetUrl || blank,
     });
   }
 }

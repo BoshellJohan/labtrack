@@ -54,4 +54,6 @@ export const VOID_CONSUMPTION_ES = {
   reasonRequired: 'La justificación es obligatoria.',
   confirm: 'Anular',
   failure: 'No se pudo anular el consumo.',
+  conflict: 'Otro administrador anuló este consumo al mismo tiempo. Actualiza la lista.',
+  alreadyVoided: 'Este consumo ya estaba anulado.',
 } as const;

@@ -11,6 +11,7 @@ import {
 import { CONSUMPTION_SORT_COLUMNS } from '@labtrack/shared';
 import type { ConsumptionSortColumn } from '@labtrack/shared';
 import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
+import { IsAfterOrEqual } from '../../common/validation/is-after-or-equal.validator';
 
 export class ListConsumptionsQueryDto extends PaginationQueryDto {
   // Spec §6.3: newest first is the default, because the question this screen
@@ -43,6 +44,9 @@ export class ListConsumptionsQueryDto extends PaginationQueryDto {
 
   @IsOptional()
   @IsDateString()
+  @IsAfterOrEqual('from', {
+    message: 'to must not be earlier than from',
+  })
   to?: string;
 
   @IsOptional()

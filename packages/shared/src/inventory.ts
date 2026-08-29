@@ -55,9 +55,12 @@ export interface CreateLocationRequest {
   description?: string;
 }
 
+// `undefined` (omitted) means "leave unchanged"; `null` means "clear it".
+// The two are deliberately distinct: collapsing them would make every field
+// a PATCH omits clear itself.
 export interface UpdateLocationRequest {
   name?: string;
-  description?: string;
+  description?: string | null;
 }
 
 export interface CreateReagentRequest {
@@ -68,7 +71,16 @@ export interface CreateReagentRequest {
   dataSheetUrl?: string;
 }
 
-export type UpdateReagentRequest = Partial<CreateReagentRequest>;
+// `undefined` (omitted) means "leave unchanged"; `null` means "clear it".
+// The two are deliberately distinct: collapsing them would make every field
+// a PATCH omits clear itself.
+export interface UpdateReagentRequest {
+  name?: string;
+  casNumber?: string;
+  reference?: string | null;
+  description?: string | null;
+  dataSheetUrl?: string | null;
+}
 
 export interface CreateBatchRequest {
   lotNumber: string;

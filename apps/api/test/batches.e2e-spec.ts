@@ -152,6 +152,15 @@ describe('Batches (e2e)', () => {
       .expect(400);
   });
 
+  it('rejects a create with a null optional field, since there is nothing to clear yet', async () => {
+    const token = await tokenFor('admin');
+    await request(app.getHttpServer())
+      .post(`/reagents/${reagentId}/batches`)
+      .set('Authorization', `Bearer ${token}`)
+      .send(validBatch({ expirationDate: null }))
+      .expect(400);
+  });
+
   it('rejects an invalid unit with 400', async () => {
     const token = await tokenFor('admin');
     await request(app.getHttpServer())
