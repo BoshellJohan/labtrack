@@ -56,6 +56,10 @@ export class LocationsService {
   async update(id: string, dto: UpdateLocationDto): Promise<LocationDto> {
     const location = await this.prisma.location.update({
       where: { id },
+      // `?? undefined` would defeat the whole point: it turns an explicit
+      // null back into "leave unchanged". The field is passed through
+      // as-is, and Prisma treats null as SET NULL and undefined as
+      // omitted.
       data: { name: dto.name, description: dto.description },
     });
     return toLocationDto(location);

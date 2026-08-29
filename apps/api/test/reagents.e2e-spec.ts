@@ -107,6 +107,62 @@ describe('Reagents (e2e)', () => {
       .expect(400);
   });
 
+  it('rejects a create with a null optional field, since there is nothing to clear yet', async () => {
+    await request(app.getHttpServer())
+      .post('/reagents')
+      .set('Authorization', `Bearer ${await tokenFor('admin')}`)
+      .send({ name: 'Acetona', casNumber: '67-64-1', reference: null })
+      .expect(400);
+  });
+
+  it('clears an optional field when it is sent as null', async () => {
+    const admin = await prisma.user.findUniqueOrThrow({
+      where: { username: 'admin' },
+    });
+    const reagent = await prisma.reagent.create({
+      data: {
+        name: 'Acetona',
+        casNumber: '67-64-1',
+        reference: 'REF-1',
+        madeById: admin.id,
+      },
+    });
+
+    const token = await tokenFor('admin');
+    const response = await request(app.getHttpServer())
+      .patch(`/reagents/${reagent.id}`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ reference: null })
+      .expect(200);
+
+    expect(body<ReagentDto>(response).reference).toBeNull();
+  });
+
+  it('leaves an optional field untouched when it is omitted', async () => {
+    const admin = await prisma.user.findUniqueOrThrow({
+      where: { username: 'admin' },
+    });
+    const reagent = await prisma.reagent.create({
+      data: {
+        name: 'Acetona',
+        casNumber: '67-64-1',
+        reference: 'REF-1',
+        madeById: admin.id,
+      },
+    });
+
+    const token = await tokenFor('admin');
+    const response = await request(app.getHttpServer())
+      .patch(`/reagents/${reagent.id}`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ name: 'Acetona pura' })
+      .expect(200);
+
+    // This is the test that stops the fix from becoming a worse bug: if null
+    // and undefined were collapsed, editing the name would wipe the reference.
+    expect(body<ReagentDto>(response).reference).toBe('REF-1');
+  });
+
   it('finds a reagent by a partial, differently-cased name', async () => {
     const token = await tokenFor('admin');
     await request(app.getHttpServer())

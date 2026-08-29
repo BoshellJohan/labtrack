@@ -72,11 +72,26 @@ describe('ReagentFormDialog', () => {
     });
   });
 
-  it('strips blank optional fields to undefined instead of sending empty strings', () => {
+  it('strips blank optional fields to null when editing, so the edit clears them', () => {
     const { component, dialogRef } = createDialog({
       reagent: { ...reagent, reference: null, description: null, dataSheetUrl: null },
     });
 
+    component.confirm();
+
+    expect(dialogRef.close).toHaveBeenCalledWith({
+      name: 'Ácido clorhídrico',
+      casNumber: '7647-01-0',
+      reference: null,
+      description: null,
+      dataSheetUrl: null,
+    });
+  });
+
+  it('strips blank optional fields to undefined when creating, since there is nothing to clear', () => {
+    const { component, dialogRef } = createDialog({});
+
+    component.form.patchValue({ name: 'Ácido clorhídrico', casNumber: '7647-01-0' });
     component.confirm();
 
     expect(dialogRef.close).toHaveBeenCalledWith({
