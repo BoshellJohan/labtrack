@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, OnInit, effect, inject, signal } from '@angular/core';
 import { DatePipe } from '@angular/common';
+import { HttpErrorResponse } from '@angular/common/http';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
@@ -279,8 +280,24 @@ export class ConsumptionsComponent implements OnInit {
           return;
         }
         this.store.voidConsumption(consumption.id, request).subscribe({
-          error: () =>
-            this.snackBar.open(VOID_CONSUMPTION_ES.failure, COMMON_ES.accept, { duration: 5000 }),
+          error: (error: HttpErrorResponse) => {
+            // A 409 is the Serializable write conflict PrismaExceptionFilter
+            // maps from P2034, and a 400 here is the already-voided guard.
+            // Both mean the row on screen is stale, so reload as well as
+            // explain — otherwise the user re-clicks a button that cannot
+            // succeed.
+            const message =
+              error.status === 409 && error.error?.code === 'WRITE_CONFLICT'
+                ? VOID_CONSUMPTION_ES.conflict
+                : error.status === 400
+                  ? VOID_CONSUMPTION_ES.alreadyVoided
+                  : VOID_CONSUMPTION_ES.failure;
+
+            if (error.status === 409 || error.status === 400) {
+              this.store.reload();
+            }
+            this.snackBar.open(message, COMMON_ES.accept, { duration: 5000 });
+          },
         });
       });
   }
