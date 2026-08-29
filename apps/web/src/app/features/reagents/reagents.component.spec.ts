@@ -316,18 +316,126 @@ describe('ReagentsComponent', () => {
   });
 
   it('does not send a consumption filter while the unit is missing', () => {
-    createComponent({
-      ...baseReagent,
-      stockByUnit: [{ unit: 'ML', total: '500.0000' }],
+    vi.useFakeTimers();
+    try {
+      createComponent({
+        ...baseReagent,
+        stockByUnit: [{ unit: 'ML', total: '500.0000' }],
+      });
+      const component = fixture.componentInstance;
+
+      component.filtersForm.controls.minConsumed.setValue('500');
+      vi.advanceTimersByTime(300);
+
+      // Without this the user gets a 400 from an endpoint they cannot see,
+      // and the table simply stops updating with no explanation.
+      http.expectNone((r) => r.url === 'http://api.test/reagents' && r.params.has('minConsumed'));
+      expect(component.filtersForm.controls.minConsumedUnit.hasError('required')).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('applies the consumption filter automatically once threshold and unit are both set, debounced like the name field', () => {
+    vi.useFakeTimers();
+    try {
+      createComponent({
+        ...baseReagent,
+        stockByUnit: [{ unit: 'ML', total: '500.0000' }],
+      });
+      const component = fixture.componentInstance;
+
+      component.filtersForm.controls.minConsumed.setValue('500');
+      vi.advanceTimersByTime(300);
+      http.expectNone((r) => r.url === 'http://api.test/reagents' && r.params.has('minConsumed'));
+
+      component.filtersForm.controls.minConsumedUnit.setValue('ML');
+      // The unit select is a discrete choice, not typing: it applies without
+      // waiting out the threshold's debounce.
+      const request = http.expectOne(
+        (r) => r.url === 'http://api.test/reagents' && r.params.has('minConsumed'),
+      );
+      expect(request.request.params.get('minConsumed')).toBe('500');
+      expect(request.request.params.get('minConsumedUnit')).toBe('ML');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('clears the consumption filter as soon as the threshold is cleared, without a separate apply step', () => {
+    vi.useFakeTimers();
+    try {
+      createComponent({
+        ...baseReagent,
+        stockByUnit: [{ unit: 'ML', total: '500.0000' }],
+      });
+      const component = fixture.componentInstance;
+
+      component.filtersForm.controls.minConsumed.setValue('500');
+      vi.advanceTimersByTime(300);
+      component.filtersForm.controls.minConsumedUnit.setValue('ML');
+      http
+        .expectOne((r) => r.url === 'http://api.test/reagents' && r.params.has('minConsumed'))
+        .flush(reagentsPage(baseReagent));
+
+      component.filtersForm.controls.minConsumed.setValue('');
+      vi.advanceTimersByTime(300);
+
+      // A form showing an empty threshold next to a table still filtered on
+      // the old one is exactly the stale-filter-panel defect this screen
+      // must not reintroduce.
+      const request = http.expectOne((r) => r.url === 'http://api.test/reagents');
+      expect(request.request.params.has('minConsumed')).toBe(false);
+      expect(request.request.params.has('minConsumedUnit')).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('round-trips a retained consumption date filter unchanged through seeding and resubmission', () => {
+    // This is the regression class that shipped three times across Phases
+    // 2 and 3: seeding a retained filter with the wrong conversion silently
+    // walks the stored date back a day every time the screen reloads it.
+    TestBed.configureTestingModule({
+      imports: [ReagentsComponent],
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: API_URL, useValue: 'http://api.test' },
+        {
+          provide: AuthService,
+          useValue: { isAdmin: () => false, currentUser: () => null, isAuthenticated: () => true },
+        },
+        { provide: MatDialog, useValue: {} },
+        { provide: MatSnackBar, useValue: { open: () => undefined } },
+      ],
     });
+
+    const store = TestBed.inject(ReagentsStore);
+    http = TestBed.inject(HttpTestingController);
+    // Local midnight, deliberately — the fixture shape that catches a bare
+    // `new Date(iso)` on the read side.
+    store.setConsumptionFilter('500', 'ML', new Date(2026, 7, 1), null);
+    http.expectOne((req) => req.url === 'http://api.test/reagents').flush(reagentsPage(baseReagent));
+
+    fixture = TestBed.createComponent(ReagentsComponent);
+    fixture.detectChanges();
+
+    http
+      .expectOne((req) => req.url === 'http://api.test/reagents')
+      .flush(reagentsPage(baseReagent));
+    http.expectOne((req) => req.url === 'http://api.test/locations').flush(emptyLocationsPage);
+
     const component = fixture.componentInstance;
+    // The seeded control must show the same calendar day that was stored,
+    // not one shifted by fromUtcMidnightIso being replaced with `new
+    // Date(iso)`.
+    expect(component.filtersForm.controls.consumedFrom.value).toEqual(new Date(2026, 7, 1));
 
-    component.filtersForm.controls.minConsumed.setValue('500');
-    component.applyConsumptionFilter();
-
-    // Without this the user gets a 400 from an endpoint they cannot see, and
-    // the table simply stops updating with no explanation.
-    http.expectNone((r) => r.url === 'http://api.test/reagents' && r.params.has('minConsumed'));
-    expect(component.filtersForm.controls.minConsumedUnit.hasError('required')).toBe(true);
+    // Re-trigger the pipeline through a sibling control and assert the wire
+    // value sent back out is byte-for-byte what was originally stored.
+    component.filtersForm.controls.minConsumedUnit.setValue('ML');
+    const resent = http.expectOne((req) => req.url === 'http://api.test/reagents');
+    expect(resent.request.params.get('consumedFrom')).toBe('2026-08-01T00:00:00.000Z');
   });
 });

@@ -13,7 +13,6 @@ export const REAGENTS_ES = {
     consumedFrom: 'Consumido desde',
     consumedTo: 'Consumido hasta',
     unitRequired: 'Elige la unidad del consumo.',
-    apply: 'Aplicar',
   },
   columns: {
     name: 'Nombre',

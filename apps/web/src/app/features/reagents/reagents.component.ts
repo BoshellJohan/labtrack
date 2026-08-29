@@ -14,7 +14,7 @@ import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatSelectModule } from '@angular/material/select';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatTableModule } from '@angular/material/table';
-import { distinctUntilChanged } from 'rxjs';
+import { Subject, debounceTime, distinctUntilChanged } from 'rxjs';
 import {
   CreateBatchRequest,
   CreateReagentRequest,
@@ -93,7 +93,7 @@ type ExpiryStatus = 'expired' | 'warning' | 'ok';
           </mat-select>
         </mat-form-field>
 
-        <form class="consumption-filters" [formGroup]="filtersForm" (ngSubmit)="applyConsumptionFilter()">
+        <div class="consumption-filters" [formGroup]="filtersForm">
           <mat-form-field appearance="outline">
             <mat-label>{{ text.filters.minConsumed }}</mat-label>
             <input matInput formControlName="minConsumed" />
@@ -124,9 +124,7 @@ type ExpiryStatus = 'expired' | 'warning' | 'ok';
             <mat-datepicker-toggle matIconSuffix [for]="consumedToPicker" />
             <mat-datepicker #consumedToPicker />
           </mat-form-field>
-
-          <button mat-flat-button type="submit">{{ text.filters.apply }}</button>
-        </form>
+        </div>
       </div>
 
       @if (store.loading()) {
@@ -314,10 +312,6 @@ export class ReagentsComponent implements OnInit {
   readonly casNumberControl = new FormControl('', { nonNullable: true });
   readonly locationControl = new FormControl('', { nonNullable: true });
 
-  // A manual "apply" step, unlike the three controls above: the threshold and
-  // unit travel together or not at all (see ReagentsStore.setConsumptionFilter),
-  // so this needs a validation gate before it can reach the store rather than
-  // firing on every keystroke.
   readonly filtersForm = this.fb.nonNullable.group({
     minConsumed: [''],
     minConsumedUnit: [''],
@@ -327,6 +321,12 @@ export class ReagentsComponent implements OnInit {
 
   readonly expandedId = signal<string | null>(null);
   readonly locationOptions = signal<LocationDto[]>([]);
+
+  // The threshold is the chattiest of these four (a text field), so it is
+  // debounced the same way nameControl's value reaches ReagentsStore.setName
+  // — everything else here (the unit select, the two datepickers) is a
+  // discrete choice and applies immediately.
+  private readonly minConsumedInput$ = new Subject<void>();
 
   constructor() {
     // The store itself debounces the name filter (see ReagentsStore), so no
@@ -353,7 +353,23 @@ export class ReagentsComponent implements OnInit {
         const unitControl = this.filtersForm.controls.minConsumedUnit;
         unitControl.setValidators(minConsumed ? Validators.required : []);
         unitControl.updateValueAndValidity({ emitEvent: false });
+        this.minConsumedInput$.next();
       });
+    this.minConsumedInput$
+      .pipe(debounceTime(300), takeUntilDestroyed())
+      .subscribe(() => this.tryApplyConsumptionFilter());
+
+    // The unit select and the two datepickers are discrete choices, not
+    // typing, so they apply straight away — no debounce needed.
+    this.filtersForm.controls.minConsumedUnit.valueChanges
+      .pipe(distinctUntilChanged(), takeUntilDestroyed())
+      .subscribe(() => this.tryApplyConsumptionFilter());
+    this.filtersForm.controls.consumedFrom.valueChanges
+      .pipe(takeUntilDestroyed())
+      .subscribe(() => this.tryApplyConsumptionFilter());
+    this.filtersForm.controls.consumedTo.valueChanges
+      .pipe(takeUntilDestroyed())
+      .subscribe(() => this.tryApplyConsumptionFilter());
 
     effect(() => {
       if (this.store.error()) {
@@ -402,11 +418,18 @@ export class ReagentsComponent implements OnInit {
     this.locationsStore.listActive().subscribe((locations) => this.locationOptions.set(locations));
   }
 
-  applyConsumptionFilter(): void {
+  // Threshold present + unit missing: surface unitRequired and do not call
+  // the store — the user would otherwise get a 400 from an endpoint they
+  // cannot see. Threshold cleared: apply anyway, since setConsumptionFilter
+  // already drops the unit once the threshold is empty, so this is exactly
+  // how a cleared filter is supposed to reach the store. Not a manual
+  // "Aplicar" step: reintroducing one would let the form show an empty
+  // threshold next to a table still filtered on a stale one, which is the
+  // exact stale-filter-panel defect this screen already fixed once.
+  private tryApplyConsumptionFilter(): void {
     const unitControl = this.filtersForm.controls.minConsumedUnit;
-    unitControl.markAsTouched();
-    unitControl.updateValueAndValidity();
     if (unitControl.invalid) {
+      unitControl.markAsTouched();
       return;
     }
     const { minConsumed, minConsumedUnit, consumedFrom, consumedTo } =
