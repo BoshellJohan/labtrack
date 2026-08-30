@@ -112,9 +112,19 @@ const PAGE_MARGIN = 40;
 const ROW_HEIGHT = 18;
 
 /**
- * Writes the report straight to `stream`. PDFKit rather than pdfmake:
- * pdfmake needs the whole document in memory before it can be written, which
- * is exactly what the row cap on `selectForExport` exists to avoid.
+ * Writes the report to `stream`. PDFKit rather than pdfmake: pdfmake builds
+ * a full document-definition object plus its computed layout before it can
+ * write a single byte, while PDFKit streams each page's content as it is
+ * drawn.
+ *
+ * `bufferPages: true` below holds the *rendered pages* (not the source rows,
+ * and not a document-definition tree) so the page-number loop at the end of
+ * this function can go back and stamp "página N de <total>" once the total
+ * is known — that total cannot exist before the last row is drawn. So this
+ * is not zero-buffer streaming; it is a lighter buffer than pdfmake's whole
+ * document. The actual memory bound on this path is the row cap on
+ * `selectForExport`, not PDFKit's own streaming behaviour — that cap holds
+ * regardless of which of these two libraries writes the file.
  */
 export function writeConsumptionsPdf(
   rows: ConsumptionDto[],
