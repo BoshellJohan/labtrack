@@ -4,6 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import { AppModule } from './app.module';
 import { Env } from './config/env';
 import { configureApp } from './common/configure-app';
+import { corsOptions } from './config/cors-options';
 
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule);
@@ -12,7 +13,8 @@ async function bootstrap(): Promise<void> {
   const port = config.get('PORT', { infer: true });
   const corsOrigin = config.get('CORS_ORIGIN', { infer: true });
 
-  app.enableCors({ origin: corsOrigin, credentials: false });
+  // See cors-options.ts for why exposedHeaders matters here.
+  app.enableCors(corsOptions(corsOrigin));
   configureApp(app);
 
   // Enable lifecycle hooks on shutdown: without this, OnModuleDestroy in PrismaService
