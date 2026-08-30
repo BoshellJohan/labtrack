@@ -16,6 +16,14 @@ import { CreateConsumptionDto } from './dto/create-consumption.dto';
 import { ListConsumptionsQueryDto } from './dto/list-consumptions-query.dto';
 import { VoidConsumptionDto } from './dto/void-consumption.dto';
 
+/**
+ * The most rows one export may contain. Chosen, not derived: comfortably above
+ * what a university laboratory exports in one period, and well below what
+ * threatens a small container. If real use proves it low, raise it — what does
+ * not happen is removing it and hoping.
+ */
+export const EXPORT_ROW_LIMIT = 10_000;
+
 // Shared by create, list and void so all three produce the exact shape the
 // mapper's type demands.
 export const WITH_RELATIONS = {
@@ -110,6 +118,40 @@ export class ConsumptionsService {
       query.page,
       query.pageSize,
     );
+  }
+
+  /**
+   * Every row matching the filter, unpaginated, for the export endpoints.
+   *
+   * Counts before reading. Once the response has begun streaming the status
+   * code is already sent, so a failure past that point reaches the user as a
+   * truncated file that opens cleanly — the worst shape this feature could
+   * fail in.
+   *
+   * `limit` exists so tests can exercise the cap without seeding ten thousand
+   * rows. It is not a caller-facing knob; both endpoints use the default.
+   */
+  async selectForExport(
+    query: ListConsumptionsQueryDto,
+    isAdmin: boolean,
+    limit: number = EXPORT_ROW_LIMIT,
+  ): Promise<ConsumptionDto[]> {
+    const where = buildConsumptionWhere(query, isAdmin);
+    const total = await this.prisma.consumption.count({ where });
+
+    if (total > limit) {
+      throw new BadRequestException(
+        `The filter matches ${total} rows, over the ${limit} an export may contain. Narrow the date range.`,
+      );
+    }
+
+    const rows = await this.prisma.consumption.findMany({
+      where,
+      include: WITH_RELATIONS,
+      orderBy: [{ [query.sortBy]: query.sortOrder }, { id: 'asc' }],
+    });
+
+    return rows.map(toConsumptionDto);
   }
 
   async void(

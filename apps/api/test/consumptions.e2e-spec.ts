@@ -5,17 +5,21 @@ import { createTestApp } from './utils/test-app';
 import { body } from './utils/body';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { PasswordService } from '../src/auth/password.service';
+import { ConsumptionsService } from '../src/consumptions/consumptions.service';
+import { ListConsumptionsQueryDto } from '../src/consumptions/dto/list-consumptions-query.dto';
 
 describe('Consumptions (e2e)', () => {
   let app: INestApplication;
   let prisma: PrismaService;
   let passwords: PasswordService;
+  let service: ConsumptionsService;
   let batchId: string;
   let reagentId: string;
 
   beforeAll(async () => {
     ({ app, prisma } = await createTestApp());
     passwords = app.get(PasswordService);
+    service = app.get(ConsumptionsService);
   });
 
   afterAll(async () => {
@@ -555,5 +559,57 @@ describe('Consumptions (e2e)', () => {
       where: { id: batchId },
     });
     expect(batch.currentStock.toString()).toBe('100');
+  });
+
+  it('exports every row that matches, not just the first page', async () => {
+    await seedConsumptions(); // the three the file already seeds
+    const token = await tokenFor('ana');
+
+    const listed = body<PaginatedResponse<ConsumptionDto>>(
+      await request(app.getHttpServer())
+        .get('/consumptions?pageSize=1')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200),
+    );
+    const exported = await service.selectForExport(
+      Object.assign(new ListConsumptionsQueryDto(), { pageSize: 1 }),
+      false,
+    );
+
+    // The pinning test of the whole feature: whatever the page size, the export
+    // covers the same set the listing counts.
+    expect(exported).toHaveLength(listed.total);
+  });
+
+  it('applies the same visibility rules as the listing', async () => {
+    await seedConsumptions();
+    const admin = await prisma.user.findUniqueOrThrow({
+      where: { username: 'admin' },
+    });
+    await prisma.reagent.update({
+      where: { id: reagentId },
+      data: { active: false },
+    });
+
+    const forUser = await service.selectForExport(
+      new ListConsumptionsQueryDto(),
+      false,
+    );
+    const forAdmin = await service.selectForExport(
+      new ListConsumptionsQueryDto(),
+      true,
+    );
+
+    // The Phase 3 leak, one format further along.
+    expect(forUser.map((row) => row.reagentName)).not.toContain('Acetona');
+    expect(forAdmin.length).toBeGreaterThan(forUser.length);
+    expect(admin.role).toBe('ADMIN');
+  });
+
+  it('refuses rather than truncating when the result exceeds the cap', async () => {
+    await seedConsumptions();
+    await expect(
+      service.selectForExport(new ListConsumptionsQueryDto(), true, 2),
+    ).rejects.toThrow(/2/);
   });
 });
