@@ -16,6 +16,7 @@ describe('JwtStrategy.validate', () => {
     const strategy = buildStrategy({
       id: 'user-1',
       username: 'ana',
+      fullName: 'Ana Ruiz',
       role: 'USER',
       mustChangePassword: false,
       active: true,
@@ -24,6 +25,7 @@ describe('JwtStrategy.validate', () => {
     await expect(strategy.validate(payload)).resolves.toEqual({
       id: 'user-1',
       username: 'ana',
+      fullName: 'Ana Ruiz',
       role: 'USER',
       mustChangePassword: false,
     });

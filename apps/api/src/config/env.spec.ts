@@ -6,6 +6,7 @@ const valid = {
   JWT_EXPIRES_IN: '8h',
   CORS_ORIGIN: 'http://localhost:4200',
   PORT: '3000',
+  LAB_NAME: 'Laboratorio Central',
 };
 
 describe('parseEnv', () => {

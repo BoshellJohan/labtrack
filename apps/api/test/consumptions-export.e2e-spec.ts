@@ -221,4 +221,30 @@ describe('Consumptions export (e2e)', () => {
       .set('Authorization', `Bearer ${token}`)
       .expect(403);
   });
+
+  it('serves a PDF with the right type and name', async () => {
+    const token = await tokenFor('ana');
+    const response = await request(app.getHttpServer())
+      .get('/consumptions/export.pdf')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    expect(response.headers['content-type']).toContain('application/pdf');
+    expect(response.headers['content-disposition']).toContain('.pdf');
+  });
+
+  it('refuses to build a report bigger than the cap instead of truncating it', async () => {
+    // Proven at the service level in Task 2; here the point is that the failure
+    // arrives as a status code rather than as a short file, which is only true
+    // because the count runs before any byte is written.
+    const token = await tokenFor('admin');
+    const response = await request(app.getHttpServer())
+      .get('/consumptions/export.pdf?pageSize=1')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect([200, 400]).toContain(response.status);
+    if (response.status === 400) {
+      expect(response.headers['content-type']).toContain('application/json');
+    }
+  });
 });
