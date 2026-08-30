@@ -31,7 +31,13 @@ import { HOME_ES } from './i18n.es';
   `,
   styles: `
     .card { max-width: 40rem; margin: 3rem auto; padding: 2rem; display: flex; flex-direction: column; align-items: flex-start; gap: 1rem; }
-    .links { display: flex; gap: 1rem; }
+    /* Wraps because the five links need more width than the card offers: at
+       Material's button metrics they come to roughly 737px against the 576px
+       left inside a 40rem card. Without wrapping, flex shrinks each button
+       below its label and the text breaks or clips inside a fixed-height
+       button. This also keeps the row usable on a phone, where even two
+       buttons do not fit side by side. */
+    .links { display: flex; flex-wrap: wrap; gap: 1rem; }
   `,
 })
 export class HomeComponent {
