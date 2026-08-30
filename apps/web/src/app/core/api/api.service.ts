@@ -1,5 +1,5 @@
 import { Injectable, inject } from '@angular/core';
-import { HttpClient, HttpParams } from '@angular/common/http';
+import { HttpClient, HttpParams, HttpResponse } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import { PaginatedResponse } from '@labtrack/shared';
 import { API_URL } from './api.config';
@@ -27,6 +27,29 @@ export class ApiService {
 
   patch<T>(path: string, body: unknown): Observable<T> {
     return this.http.patch<T>(`${this.baseUrl}${path}`, body);
+  }
+
+  // Builds the same URL a request to this path/params would hit, without
+  // issuing one. This exists to let a component show "this is what would be
+  // exported" (e.g. for a test to assert the filters reached the link) — it
+  // must never be used as an `<a href>` for an authenticated endpoint: a
+  // plain browser navigation carries no Authorization header, so a route
+  // behind JwtAuthGuard would answer 401. Use downloadBlob for the actual
+  // download.
+  downloadUrl(path: string, params: QueryParams = {}): string {
+    const query = toHttpParams(params).toString();
+    return query ? `${this.baseUrl}${path}?${query}` : `${this.baseUrl}${path}`;
+  }
+
+  // Fetches a file through HttpClient (so the auth interceptor attaches the
+  // token, unlike a plain <a href>) and hands back the full response so the
+  // caller can read the server-chosen filename off Content-Disposition.
+  downloadBlob(path: string, params: QueryParams = {}): Observable<HttpResponse<Blob>> {
+    return this.http.get(`${this.baseUrl}${path}`, {
+      params: toHttpParams(params),
+      responseType: 'blob',
+      observe: 'response',
+    });
   }
 }
 
