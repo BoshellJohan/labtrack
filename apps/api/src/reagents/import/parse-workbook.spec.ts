@@ -28,11 +28,11 @@ describe('parseWorkbook', () => {
     expect((await parseWorkbook(buffer))[0].quantity).toBe('2.5000');
   });
 
-  it('reads a numeric quantity from the cell value, not from how it is displayed', async () => {
-    // Write a real number rather than a string, which is what a technician
-    // typing into Excel produces. Reading `cell.text` here would follow the
-    // display format and could return a comma-separated value in a Spanish
-    // locale, rejecting a perfectly valid cell.
+  it('reads a numeric quantity the same from cell value or cell text', async () => {
+    // For a plain numeric cell, ExcelJS's `value` and `text` produce the
+    // same string regardless of number format — this does not exercise a
+    // locale or display-format guarantee, it just documents that a numeric
+    // cell's quantity survives the round trip.
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet('Reactivos');
     sheet.addRow([...IMPORT_COLUMNS]);
@@ -53,6 +53,58 @@ describe('parseWorkbook', () => {
     // '2.5' and not '2.5000': the trailing zeros are display scale, and
     // Decimal(12,4) stores 2.5 and 2.5000 as the same number anyway.
     expect((await parseWorkbook(buffer))[0].quantity).toBe('2.5');
+  });
+
+  it('reads a formula cell by its computed result, not as an unreadable object', async () => {
+    // A technician computing a quantity with `=250*4` or a unit conversion
+    // is ordinary. A formula cell's `value` is `{ formula, result }`, which
+    // must be unwrapped to its numeric result rather than falling through to
+    // an empty string and misreporting the row as missing a quantity.
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet('Reactivos');
+    sheet.addRow([...IMPORT_COLUMNS]);
+    sheet.addRow([
+      'Acetona',
+      '67-64-1',
+      '',
+      'L-1',
+      '2026-08-01',
+      '',
+      '1',
+      'ML',
+      'Estante A1',
+    ]);
+    sheet.getCell('G2').value = {
+      formula: '1+1.5',
+      result: 2.5,
+    };
+    const buffer = (await workbook.xlsx.writeBuffer()) as Buffer;
+
+    expect((await parseWorkbook(buffer))[0].quantity).toBe('2.5');
+  });
+
+  it('reads a formula cell whose result is text, intact', async () => {
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet('Reactivos');
+    sheet.addRow([...IMPORT_COLUMNS]);
+    sheet.addRow([
+      'Acetona',
+      '67-64-1',
+      '',
+      'L-1',
+      '2026-08-01',
+      '',
+      '1',
+      'ML',
+      'Estante A1',
+    ]);
+    sheet.getCell('A2').value = {
+      formula: '"Ace"&"tona"',
+      result: 'Acetona',
+    };
+    const buffer = (await workbook.xlsx.writeBuffer()) as Buffer;
+
+    expect((await parseWorkbook(buffer))[0].reagentName).toBe('Acetona');
   });
 
   it('numbers rows as the spreadsheet does, so an error names a row the user can find', async () => {

@@ -3,14 +3,15 @@ import * as ExcelJS from 'exceljs';
 import { IMPORT_COLUMNS, IMPORT_ROW_LIMIT, ImportRow } from '@labtrack/shared';
 
 /**
- * Reads a cell into the string an ImportRow carries. Uses `cell.value`, not
- * `cell.text`: `cell.text` follows the cell's display format, so a numeric
- * cell shown with a comma separator (a Spanish locale, or a custom number
- * format) would arrive as e.g. "2,5" and be rejected even though the value
- * is perfectly valid. `cell.value` is robust to that — a number goes through
- * `String()`, a string is used as-is — and there is no precision loss: the
- * quantity column holds at most 12 significant digits, well inside what a
- * double round-trips exactly.
+ * Reads a cell into the string an ImportRow carries, from `cell.value`
+ * rather than `cell.text`. For a plain numeric or string cell the two are
+ * equivalent in this library — the choice does not protect against a
+ * locale-formatted display string. It matters for a formula cell: `value`
+ * there is `{ formula, result }`, while `text` already reports the computed
+ * result as a string. A laboratory technician writing `=250*4` or a unit
+ * conversion is ordinary, so a formula's `result` is unwrapped through the
+ * same conversion as a plain cell — a numeric result becomes its string, a
+ * text result is used as-is — rather than being treated as unreadable.
  */
 function cellString(value: ExcelJS.CellValue): string {
   if (value === null || value === undefined) {
@@ -28,9 +29,11 @@ function cellString(value: ExcelJS.CellValue): string {
   if (typeof value === 'boolean') {
     return String(value);
   }
-  // Rich cell types (formulas, hyperlinks, errors) are not expected in the
-  // import template's data cells; fall back to an empty string rather than
-  // stringifying an object.
+  if (typeof value === 'object' && 'result' in value) {
+    return cellString(value.result);
+  }
+  // Other rich cell types (hyperlinks, rich text, errors) fall back to an
+  // empty string rather than stringifying an object.
   return '';
 }
 
