@@ -158,9 +158,15 @@ Aquí la cantidad **sí** se formatea junto a su unidad, porque un PDF se lee y 
 se suma, y un número sin unidad es ambiguo entre mililitros y litros (§4.1 del
 MVP).
 
-Se elige PDFKit sobre pdfmake por una razón concreta: pdfmake necesita el
-documento completo en memoria antes de escribirlo, y el tope de filas del §7
-existe precisamente por la memoria del contenedor. PDFKit escribe según avanza.
+Se elige PDFKit sobre pdfmake por una razón concreta: pdfmake necesita un árbol
+de definición del documento completo, ya maquetado, antes de escribir un solo
+byte. PDFKit escribe cada página según la dibuja — pero la numeración "página N
+de <total>" exige conocer el total, que no existe hasta dibujar la última fila,
+así que PDFKit la retiene con `bufferPages: true` para poder volver atrás y
+sellarla al final. Eso no es streaming sin búfer; es un búfer más liviano que el
+de pdfmake (páginas ya renderizadas, no un árbol de definición completo). Lo que
+de verdad acota la memoria de este camino es el tope de filas del §7, no el modo
+de escritura de PDFKit.
 
 ## 7. El conteo va primero
 
@@ -209,7 +215,52 @@ tope de filas devuelve 400 y no un archivo; `includeVoided` sigue rechazándose 
 un no administrador con 403; y las columnas de anulación aparecen solo cuando
 corresponde.
 
-## 10. Fuera del alcance de esta spec
+## 10. El cliente
+
+Esta spec definió los endpoints (§5) y nunca describió cómo alguien llega a
+ellos — una omisión detectada al escribir el plan y cerrada solo al construir
+la pantalla. Se deja constancia aquí de lo que la rama construyó, no de una
+decisión tomada de antemano.
+
+**La exportación cubre lo que la persona está viendo, nunca la página.** Los
+dos botones ("Descargar Excel", "Descargar PDF") se arman a partir de los
+mismos filtros que la tabla de consumos tiene aplicados en ese momento —
+propósito, reactivo, rango de fechas, `includeVoided` — pero nunca de la
+página ni el tamaño de página. Enviarlos sería invitar a que alguien los
+respetara más adelante, y de todos modos los endpoints los ignoran (§5):
+mandarlos sin que hagan nada es peor que no mandarlos, porque parece una
+promesa que no se cumple.
+
+**La descarga pasa por el mismo cliente HTTP que todo lo demás, nunca por un
+enlace plano.** Ambas rutas exigen `JwtAuthGuard`, y el interceptor que añade
+el token solo actúa sobre las llamadas de `HttpClient` — una navegación de
+`<a href>` llegaría sin cabecera `Authorization` y recibiría 401. La
+alternativa habría sido aceptar el token como parámetro de consulta, y se
+descartó: un token en una URL queda escrito en el historial del navegador, en
+los registros del servidor y en cualquier proxy intermedio, sin forma de
+retirarlo después. En su lugar, el botón pide el archivo por `HttpClient` (con
+el token puesto por el interceptor), recibe la respuesta como `Blob` y
+descarga desde una URL de objeto temporal, revocada apenas se dispara la
+descarga. Cuesta algo más de código a cambio de que la credencial nunca toque
+una URL.
+
+**El 400 por exceso de filas (§7) tiene su propio mensaje.** Es el único fallo
+que la persona puede corregir por sí misma — acotar el rango de fechas — así
+que decirle "no se pudo generar el archivo" desperdiciaría lo único útil que
+el servidor ya dijo. Cualquier otro fallo cae al mensaje genérico.
+
+**CORS debe exponer `Content-Disposition`, o el navegador no puede leer el
+nombre del archivo.** Por la propia especificación de CORS, el JavaScript de
+una página solo puede leer, entre orígenes distintos, una lista corta de
+cabeceras por defecto — `Content-Disposition` no está en ella salvo que el
+servidor la declare explícitamente en `exposedHeaders`. Sin eso, la descarga
+funciona (el archivo llega íntegro) pero el nombre que calculó el servidor
+(§5) es invisible para el navegador, que cae a uno genérico sin que nada lo
+señale como error. Esto no es un detalle de entorno local: Netlify y Railway
+separan el cliente y el API en orígenes distintos por definición, así que sin
+esta cabecera expuesta el problema existe también en producción.
+
+## 11. Fuera del alcance de esta spec
 
 - Importación de reactivos desde Excel — proyecto independiente, spec propia.
 - Exportar cualquier entidad que no sean consumos.
