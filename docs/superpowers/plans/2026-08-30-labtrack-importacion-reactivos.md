@@ -15,7 +15,7 @@
 - Code, identifiers, file names, comments and commit messages in **English**. Every user-visible string is **Spanish** and lives in an `i18n.es.ts` dictionary — never a literal in a template. Spreadsheet column headers are file content and live with the parser, as the export's do.
 - **Both endpoints are ADMIN only.** Creating reagents and batches already is; the import must not be a side door into what manual creation restricts.
 - **All or nothing.** One invalid row means nothing is written. There is no partial import.
-- **Quantities are read as text, never as the cell's number.** `Decimal(12,4)` does not survive a `double`, and the source here is a spreadsheet. Validate with `/^\d{1,8}(\.\d{1,4})?$/`, the same pattern `create-batch.dto.ts` uses.
+- **Quantities are read from `cell.value`, not `cell.text`** — number goes through `String()`, text is used as-is. Measured against ExcelJS: a numeric cell formatted `0.0000` reports `text = "2.5"`, so the text follows the display and could arrive comma-separated in a Spanish locale, rejecting a valid cell. There is no precision risk either way (a `Decimal(12,4)` holds at most 12 significant digits and a `double` round-trips 15–17), so robustness decides it. Validate with `/^\d{1,8}(\.\d{1,4})?$/`, the same pattern `create-batch.dto.ts` uses.
 - **1.000 rows maximum**, and a byte limit on the upload. Over either, reject without writing.
 - `madeById` comes from the authenticated user, **never from the file**.
 - Conventional commit prefixes. TDD: the failing test comes first, and you must see it fail for the stated reason.
@@ -468,14 +468,28 @@ async function workbookWith(rows: string[][]): Promise<Buffer> {
 }
 
 describe('parseWorkbook', () => {
-  it('reads the quantity as text so a decimal survives the spreadsheet', async () => {
+  it('reads a text-formatted quantity exactly as written', async () => {
     const buffer = await workbookWith([
       ['Acetona', '67-64-1', '', 'L-1', '2026-08-01', '', '2.5000', 'ML', 'Estante A1'],
     ]);
-    const rows = await parseWorkbook(buffer);
-    // Not 2.5: the trailing zeros are the scale the column stores, and
-    // reading the cell's numeric value would have dropped them.
-    expect(rows[0].quantity).toBe('2.5000');
+    expect((await parseWorkbook(buffer))[0].quantity).toBe('2.5000');
+  });
+
+  it('reads a numeric quantity from the cell value, not from how it is displayed', async () => {
+    // Write a real number rather than a string, which is what a technician
+    // typing into Excel produces. Reading `cell.text` here would follow the
+    // display format and could return a comma-separated value in a Spanish
+    // locale, rejecting a perfectly valid cell.
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet('Reactivos');
+    sheet.addRow([...IMPORT_COLUMNS]);
+    sheet.addRow(['Acetona', '67-64-1', '', 'L-1', '2026-08-01', '', 2.5, 'ML', 'Estante A1']);
+    sheet.getCell('G2').numFmt = '0.0000';
+    const buffer = (await workbook.xlsx.writeBuffer()) as Buffer;
+
+    // '2.5' and not '2.5000': the trailing zeros are display scale, and
+    // Decimal(12,4) stores 2.5 and 2.5000 as the same number anyway.
+    expect((await parseWorkbook(buffer))[0].quantity).toBe('2.5');
   });
 
   it('numbers rows as the spreadsheet does, so an error names a row the user can find', async () => {
@@ -504,7 +518,7 @@ describe('parseWorkbook', () => {
 
 - [ ] **Step 5: Implement `parse-workbook.ts`**
 
-Loads the buffer with ExcelJS, checks the header row equals `IMPORT_COLUMNS`, then reads each data row using **`cell.text`**, not `cell.value`, with a comment saying why: the numeric value of a quantity cell is a `double`, and `Decimal(12,4)` does not survive one. Throws a `BadRequestException` on a wrong template or over `IMPORT_ROW_LIMIT`.
+Loads the buffer with ExcelJS, checks the header row equals `IMPORT_COLUMNS`, then reads each data row from **`cell.value`** — a number goes through `String()`, a string is used as-is — with a comment saying why: `cell.text` follows the cell's display format, so a numeric cell shown with a comma separator would arrive as `2,5` and be rejected although it is valid. Throws a `BadRequestException` on a wrong template or over `IMPORT_ROW_LIMIT`.
 
 - [ ] **Step 6: Verify**
 

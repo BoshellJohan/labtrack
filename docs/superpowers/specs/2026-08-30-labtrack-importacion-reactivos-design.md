@@ -126,19 +126,31 @@ exportación, para que un archivo exportado sirva de plantilla:
 | Unidad | sí | valor del enum (§6.2) |
 | Ubicación | sí | nombre de una ubicación activa |
 
-### 6.1 La cantidad se lee como texto, no como número
+### 6.1 La cantidad se lee del valor de la celda, no de su texto
 
-Es el reflejo exacto de la decisión de la exportación. Allí se escribió una celda
-numérica a propósito, porque el destino era una hoja de cálculo. Aquí el **origen**
-es una hoja de cálculo, y un `Decimal(12,4)` no sobrevive intacto a un `double`.
+Una primera versión de esta spec decía lo contrario —leer el texto— con el
+argumento de que un `Decimal(12,4)` no sobrevive a un `double`. **Ese argumento
+era falso y la medición lo desmintió**, así que la decisión cambió con él.
 
-ExcelJS expone las dos caras de una celda: su valor numérico y su texto
-formateado. **Se lee el texto**, que es lo que el técnico escribió, y se valida
-con el mismo patrón decimal que aplica el API (`/^\d{1,8}(\.\d{1,4})?$/`).
+No hay pérdida de precisión por ninguna de las dos vías: `Decimal(12,4)` admite
+como mucho 12 dígitos significativos y un `double` los redondea sin ambigüedad
+hasta 15 o 17, de modo que convertir el número a cadena recupera el decimal
+exacto que el usuario escribió.
 
-Consecuencia aceptada: `2,5` con coma decimal se rechaza con un mensaje claro en
-lugar de interpretarse. Adivinar la intención de un separador decimal en una
-importación de inventario es cómo entra una cantidad que nadie escribió.
+Lo que sí cambia entre las dos vías es la robustez frente al formato. Medido
+contra ExcelJS: una celda numérica con formato `0.0000` devuelve `text = "2.5"`,
+es decir, **el texto depende de cómo se muestre la celda**, y en una
+configuración regional que use coma decimal podría llegar como `"2,5"` — un valor
+correcto que nuestra validación rechazaría.
+
+Por eso se lee `cell.value`: si es número, se convierte a cadena; si es texto, se
+usa tal cual. Después se valida con el mismo patrón que aplica el API
+(`/^\d{1,8}(\.\d{1,4})?$/`).
+
+Consecuencia aceptada: una celda **de texto** que contenga `2,5` se rechaza con
+un mensaje claro en lugar de interpretarse. Adivinar la intención de un separador
+decimal en una importación de inventario es cómo entra una cantidad que nadie
+escribió.
 
 ### 6.2 Las unidades se aceptan literales
 
