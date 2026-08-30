@@ -126,26 +126,44 @@ exportación, para que un archivo exportado sirva de plantilla:
 | Unidad | sí | valor del enum (§6.2) |
 | Ubicación | sí | nombre de una ubicación activa |
 
-### 6.1 La cantidad se lee del valor de la celda, no de su texto
+### 6.1 De dónde se lee la cantidad
 
-Una primera versión de esta spec decía lo contrario —leer el texto— con el
-argumento de que un `Decimal(12,4)` no sobrevive a un `double`. **Ese argumento
-era falso y la medición lo desmintió**, así que la decisión cambió con él.
+Esta sección se ha corregido dos veces, y las dos por medir en vez de razonar.
+Vale la pena dejar el rastro, porque el resultado final no se parece a ninguna de
+las dos versiones anteriores.
 
-No hay pérdida de precisión por ninguna de las dos vías: `Decimal(12,4)` admite
-como mucho 12 dígitos significativos y un `double` los redondea sin ambigüedad
-hasta 15 o 17, de modo que convertir el número a cadena recupera el decimal
-exacto que el usuario escribió.
+**La primera decía leer el texto de la celda**, con el argumento de que un
+`Decimal(12,4)` no sobrevive a un `double`. Falso: la columna admite como mucho
+12 dígitos significativos y un `double` los redondea sin ambigüedad hasta 15 o
+17, así que convertir a cadena recupera el decimal exacto por cualquiera de las
+dos vías. No hay ningún argumento de precisión aquí.
 
-Lo que sí cambia entre las dos vías es la robustez frente al formato. Medido
-contra ExcelJS: una celda numérica con formato `0.0000` devuelve `text = "2.5"`,
-es decir, **el texto depende de cómo se muestre la celda**, y en una
-configuración regional que use coma decimal podría llegar como `"2,5"` — un valor
-correcto que nuestra validación rechazaría.
+**La segunda decía leer el valor**, porque el texto seguiría al formato de
+visualización y en una configuración con coma decimal podría llegar como `2,5`.
+También falso, medido contra ExcelJS con seis formatos distintos —incluido uno
+con configuración española explícita—: `cell.text` **no aplica el formato
+numérico**, y para una celda numérica devuelve siempre lo mismo que
+`String(cell.value)`.
 
-Por eso se lee `cell.value`: si es número, se convierte a cadena; si es texto, se
-usa tal cual. Después se valida con el mismo patrón que aplica el API
+Donde sí difieren de verdad es en una **celda con fórmula**:
+
+```
+value         = { formula: '1+1.5', result: 2.5 }
+String(value) = [object Object]
+text          = '2.5'
+```
+
+Y esa es la única diferencia que importa, porque un técnico que calcula una
+cantidad en la hoja —`=250*4`, una conversión de unidades, una suma de columnas—
+es un caso corriente, no un borde exótico.
+
+**La regla, entonces:** se lee `cell.value`; si es un objeto con `result`, se usa
+ese resultado; un número se convierte a cadena y un texto se usa tal cual.
+Después se valida con el mismo patrón que aplica el API
 (`/^\d{1,8}(\.\d{1,4})?$/`).
+
+Ignorar el caso de la fórmula haría que una celda llena se reportara como
+ausente, que es el error más desconcertante que esta funcionalidad podría dar.
 
 Consecuencia aceptada: una celda **de texto** que contenga `2,5` se rechaza con
 un mensaje claro en lugar de interpretarse. Adivinar la intención de un separador
