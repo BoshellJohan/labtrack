@@ -8,13 +8,21 @@ import {
   ConsumptionDto,
   PaginatedResponse,
 } from '@labtrack/shared';
-import { Prisma } from '../prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { runInTransaction } from '../common/prisma/transaction';
 import { toConsumptionDto } from '../common/mappers/consumption.mapper';
+import { buildConsumptionWhere } from './consumption-where';
 import { CreateConsumptionDto } from './dto/create-consumption.dto';
 import { ListConsumptionsQueryDto } from './dto/list-consumptions-query.dto';
 import { VoidConsumptionDto } from './dto/void-consumption.dto';
+
+/**
+ * The most rows one export may contain. Chosen, not derived: comfortably above
+ * what a university laboratory exports in one period, and well below what
+ * threatens a small container. If real use proves it low, raise it — what does
+ * not happen is removing it and hoping.
+ */
+export const EXPORT_ROW_LIMIT = 10_000;
 
 // Shared by create, list and void so all three produce the exact shape the
 // mapper's type demands.
@@ -87,40 +95,7 @@ export class ConsumptionsService {
     query: ListConsumptionsQueryDto,
     isAdmin: boolean,
   ): Promise<PaginatedResponse<ConsumptionDto>> {
-    const where: Prisma.ConsumptionWhereInput = {};
-
-    if (!query.includeVoided) {
-      where.active = true;
-    }
-    if (query.batchId) {
-      where.batchId = query.batchId;
-    }
-    if (query.reagentId) {
-      // A consumption belongs to a batch, and a batch to a reagent: filtering
-      // by reagent means "any of that reagent's batches".
-      where.batch = {
-        reagentId: query.reagentId,
-        // A non-admin must never read a deactivated reagent's or batch's
-        // name, lot number or history through this endpoint: those are
-        // "deleted" for them everywhere else (spec §6.1), and consumptions
-        // otherwise carries them straight through with no filter of its own.
-        ...(isAdmin ? {} : { active: true, reagent: { active: true } }),
-      };
-    } else if (!isAdmin) {
-      where.batch = { active: true, reagent: { active: true } };
-    }
-    if (query.madeById) {
-      where.madeById = query.madeById;
-    }
-    if (query.purpose) {
-      where.purpose = { contains: query.purpose, mode: 'insensitive' };
-    }
-    if (query.from || query.to) {
-      where.consumedAt = {
-        ...(query.from ? { gte: new Date(query.from) } : {}),
-        ...(query.to ? { lte: new Date(query.to) } : {}),
-      };
-    }
+    const where = buildConsumptionWhere(query, isAdmin);
 
     // Count and rows in one transaction with the same `where`, so the
     // paginator can never show a total that disagrees with the page. The `id`
@@ -143,6 +118,40 @@ export class ConsumptionsService {
       query.page,
       query.pageSize,
     );
+  }
+
+  /**
+   * Every row matching the filter, unpaginated, for the export endpoints.
+   *
+   * Counts before reading. Once the response has begun streaming the status
+   * code is already sent, so a failure past that point reaches the user as a
+   * truncated file that opens cleanly — the worst shape this feature could
+   * fail in.
+   *
+   * `limit` exists so tests can exercise the cap without seeding ten thousand
+   * rows. It is not a caller-facing knob; both endpoints use the default.
+   */
+  async selectForExport(
+    query: ListConsumptionsQueryDto,
+    isAdmin: boolean,
+    limit: number = EXPORT_ROW_LIMIT,
+  ): Promise<ConsumptionDto[]> {
+    const where = buildConsumptionWhere(query, isAdmin);
+    const total = await this.prisma.consumption.count({ where });
+
+    if (total > limit) {
+      throw new BadRequestException(
+        `The filter matches ${total} rows, over the ${limit} an export may contain. Narrow the date range.`,
+      );
+    }
+
+    const rows = await this.prisma.consumption.findMany({
+      where,
+      include: WITH_RELATIONS,
+      orderBy: [{ [query.sortBy]: query.sortOrder }, { id: 'asc' }],
+    });
+
+    return rows.map(toConsumptionDto);
   }
 
   async void(

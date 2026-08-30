@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, OnInit, effect, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, OnInit, computed, effect, inject, signal } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
@@ -23,7 +23,7 @@ import { CONSUMPTIONS_ES, VOID_CONSUMPTION_ES } from './i18n.es';
 import { COMMON_ES } from '../../shared/i18n/es';
 import { createSpanishPaginatorIntl } from '../../shared/i18n/spanish-paginator-intl';
 import { AuthService } from '../../core/auth/auth.service';
-import { ApiService } from '../../core/api/api.service';
+import { ApiService, QueryParams } from '../../core/api/api.service';
 
 @Component({
   selector: 'lt-consumptions',
@@ -53,6 +53,15 @@ import { ApiService } from '../../core/api/api.service';
   template: `
     <section class="page">
       <h1>{{ text.title }}</h1>
+
+      <div class="export-actions">
+        <button mat-stroked-button type="button" (click)="downloadExcel()">
+          {{ text.exportExcel }}
+        </button>
+        <button mat-stroked-button type="button" (click)="downloadPdf()">
+          {{ text.exportPdf }}
+        </button>
+      </div>
 
       <form class="filters" [formGroup]="filtersForm">
         <mat-form-field appearance="outline">
@@ -175,6 +184,7 @@ import { ApiService } from '../../core/api/api.service';
   styles: `
     .page { padding: 1.5rem; display: flex; flex-direction: column; gap: 1rem; }
     .filters { display: flex; flex-wrap: wrap; gap: 1rem; align-items: center; }
+    .export-actions { display: flex; gap: 0.75rem; }
     table { width: 100%; }
     .empty { color: rgba(0, 0, 0, 0.6); }
   `,
@@ -200,6 +210,25 @@ export class ConsumptionsComponent implements OnInit {
   ];
 
   readonly reagentOptions = signal<ReagentDto[]>([]);
+
+  // The export must cover what the user is looking at, so these are built
+  // from the store's *filters* only — never page/pageSize, which the store
+  // already keeps out of `filters()` (see ConsumptionsStore/PaginatedStore).
+  // These strings are not used as an `<a href>`: a plain browser navigation
+  // to a JwtAuthGuard route carries no Authorization header and would 401.
+  // downloadExcel/downloadPdf below fetch the same path+filters through
+  // ApiService instead, so the token rides along.
+  readonly excelUrl = computed(() =>
+    this.api.downloadUrl('/consumptions/export.xlsx', this.exportParams()),
+  );
+  readonly pdfUrl = computed(() =>
+    this.api.downloadUrl('/consumptions/export.pdf', this.exportParams()),
+  );
+
+  // Same cast PaginatedStore itself makes when it sends these filters to
+  // getPage: every field of ConsumptionsFilters is a primitive, so this only
+  // gives up compile-time checking, not run-time correctness.
+  private readonly exportParams = computed(() => this.store.filters() as QueryParams);
 
   readonly filtersForm = this.fb.nonNullable.group({
     purpose: [''],
@@ -301,4 +330,47 @@ export class ConsumptionsComponent implements OnInit {
         });
       });
   }
+
+  downloadExcel(): void {
+    this.triggerDownload('/consumptions/export.xlsx', 'consumos.xlsx');
+  }
+
+  downloadPdf(): void {
+    this.triggerDownload('/consumptions/export.pdf', 'consumos.pdf');
+  }
+
+  // Fetches through ApiService (so the auth interceptor attaches the token)
+  // rather than a plain <a href>, then hands the Blob to the browser via a
+  // temporary object URL, revoked right after the click so it doesn't leak.
+  private triggerDownload(path: string, fallbackFilename: string): void {
+    this.api.downloadBlob(path, this.exportParams()).subscribe({
+      next: (response) => {
+        const blob = response.body;
+        if (!blob) {
+          return;
+        }
+        const filename = filenameFromContentDisposition(response.headers.get('Content-Disposition')) ?? fallbackFilename;
+        const objectUrl = URL.createObjectURL(blob);
+        const anchor = document.createElement('a');
+        anchor.href = objectUrl;
+        anchor.download = filename;
+        anchor.click();
+        URL.revokeObjectURL(objectUrl);
+      },
+      error: (error: HttpErrorResponse) => {
+        // The row cap is the one failure a user can act on (narrow the date
+        // range), so it earns its own message instead of the generic one.
+        const message = error.status === 400 ? this.text.exportTooLarge : this.text.exportFailed;
+        this.snackBar.open(message, COMMON_ES.accept, { duration: 5000 });
+      },
+    });
+  }
+}
+
+function filenameFromContentDisposition(header: string | null): string | null {
+  if (!header) {
+    return null;
+  }
+  const match = /filename="?([^"]+)"?/.exec(header);
+  return match ? match[1] : null;
 }

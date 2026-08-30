@@ -6,6 +6,11 @@ const envSchema = z.object({
   JWT_EXPIRES_IN: z.string().default('8h'),
   CORS_ORIGIN: z.string().default('http://localhost:4200'),
   PORT: z.coerce.number().int().positive().default(3000),
+  // Defaulted rather than required on purpose. `main` deploys automatically, so
+  // a required variable would stop the API booting on the next deploy over a
+  // header string. The cost, stated: with nobody configuring it, the PDF goes
+  // out with the placeholder.
+  LAB_NAME: z.string().min(1).default('Laboratorio'),
 });
 
 export type Env = z.infer<typeof envSchema>;

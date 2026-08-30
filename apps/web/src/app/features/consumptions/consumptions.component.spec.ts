@@ -228,6 +228,133 @@ describe('ConsumptionsComponent', () => {
     expect(text).toContain('Anulado por Carlos Díaz: Registrado por error');
   });
 
+  describe('export links', () => {
+    it('builds each download link with the filters currently applied', () => {
+      createComponent(true);
+      fixture.detectChanges();
+      http.expectOne((r) => r.url === 'http://api.test/reagents').flush(emptyReagentsPage());
+      http
+        .expectOne((r) => r.url === 'http://api.test/consumptions')
+        .flush(consumptionsPage(activeConsumption));
+      fixture.detectChanges();
+
+      const store = TestBed.inject(ConsumptionsStore);
+      store.setReagentId('r1');
+      http
+        .expectOne((r) => r.url === 'http://api.test/consumptions')
+        .flush(consumptionsPage(activeConsumption));
+      fixture.detectChanges();
+
+      const component = fixture.componentInstance;
+      // The export must cover what the user is looking at. A link that drops
+      // the filters hands them a file for a different question than the one
+      // on screen.
+      expect(component.excelUrl()).toContain('reagentId=r1');
+      expect(component.pdfUrl()).toContain('reagentId=r1');
+    });
+
+    it('does not carry pagination into the export', () => {
+      createComponent(true);
+      fixture.detectChanges();
+      http.expectOne((r) => r.url === 'http://api.test/reagents').flush(emptyReagentsPage());
+      http
+        .expectOne((r) => r.url === 'http://api.test/consumptions')
+        .flush(consumptionsPage(activeConsumption));
+      fixture.detectChanges();
+
+      const store = TestBed.inject(ConsumptionsStore);
+      store.setPage(2);
+      http
+        .expectOne((r) => r.url === 'http://api.test/consumptions')
+        .flush(consumptionsPage(activeConsumption));
+      fixture.detectChanges();
+
+      const component = fixture.componentInstance;
+      // Exporting page 3 of 7 is useless; the endpoints ignore paging, and
+      // sending it would only invite someone to honour it later.
+      expect(component.excelUrl()).not.toContain('page=');
+      expect(component.excelUrl()).not.toContain('pageSize=');
+    });
+
+    it('downloads the excel file as a blob fetched through ApiService, keeping the token off the URL', () => {
+      createComponent(true);
+      fixture.detectChanges();
+      http.expectOne((r) => r.url === 'http://api.test/reagents').flush(emptyReagentsPage());
+      http
+        .expectOne((r) => r.url === 'http://api.test/consumptions')
+        .flush(consumptionsPage(activeConsumption));
+      fixture.detectChanges();
+
+      const component = fixture.componentInstance;
+      const createObjectURLSpy = vi
+        .spyOn(URL, 'createObjectURL')
+        .mockReturnValue('blob:mock');
+      const revokeObjectURLSpy = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
+      const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
+
+      component.downloadExcel();
+      const request = http.expectOne((r) => r.url === 'http://api.test/consumptions/export.xlsx');
+      expect(request.request.responseType).toBe('blob');
+      request.flush(new Blob(['data']), {
+        headers: { 'Content-Disposition': 'attachment; filename="consumos.xlsx"' },
+      });
+
+      expect(createObjectURLSpy).toHaveBeenCalled();
+      expect(clickSpy).toHaveBeenCalled();
+      expect(revokeObjectURLSpy).toHaveBeenCalledWith('blob:mock');
+    });
+
+    it('tells the user to narrow the date range when the export hits the row cap', () => {
+      createComponent(true);
+      fixture.detectChanges();
+      http.expectOne((r) => r.url === 'http://api.test/reagents').flush(emptyReagentsPage());
+      http
+        .expectOne((r) => r.url === 'http://api.test/consumptions')
+        .flush(consumptionsPage(activeConsumption));
+      fixture.detectChanges();
+
+      const snackBar = TestBed.inject(MatSnackBar);
+      const openSpy = vi.spyOn(snackBar, 'open');
+      const component = fixture.componentInstance;
+
+      component.downloadPdf();
+      http
+        .expectOne((r) => r.url === 'http://api.test/consumptions/export.pdf')
+        .flush(new Blob(['too many rows']), { status: 400, statusText: 'Bad Request' });
+
+      expect(openSpy).toHaveBeenCalledWith(
+        CONSUMPTIONS_ES.exportTooLarge,
+        COMMON_ES.accept,
+        expect.anything(),
+      );
+    });
+
+    it('falls back to the generic export message for anything else', () => {
+      createComponent(true);
+      fixture.detectChanges();
+      http.expectOne((r) => r.url === 'http://api.test/reagents').flush(emptyReagentsPage());
+      http
+        .expectOne((r) => r.url === 'http://api.test/consumptions')
+        .flush(consumptionsPage(activeConsumption));
+      fixture.detectChanges();
+
+      const snackBar = TestBed.inject(MatSnackBar);
+      const openSpy = vi.spyOn(snackBar, 'open');
+      const component = fixture.componentInstance;
+
+      component.downloadExcel();
+      http
+        .expectOne((r) => r.url === 'http://api.test/consumptions/export.xlsx')
+        .flush(new Blob(['error']), { status: 500, statusText: 'Server Error' });
+
+      expect(openSpy).toHaveBeenCalledWith(
+        CONSUMPTIONS_ES.exportFailed,
+        COMMON_ES.accept,
+        expect.anything(),
+      );
+    });
+  });
+
   describe('void error handling', () => {
     let component: ConsumptionsComponent;
     let dialogOpenSpy: ReturnType<typeof vi.fn>;

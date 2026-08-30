@@ -44,6 +44,10 @@ export const CONSUMPTIONS_ES = {
   voidAction: 'Anular',
   empty: 'No hay consumos que coincidan con los filtros.',
   loadFailed: 'No se pudieron cargar los consumos.',
+  exportExcel: 'Descargar Excel',
+  exportPdf: 'Descargar PDF',
+  exportFailed: 'No se pudo generar el archivo.',
+  exportTooLarge: 'El filtro devuelve demasiadas filas. Acota el rango de fechas.',
 } as const;
 
 export const VOID_CONSUMPTION_ES = {

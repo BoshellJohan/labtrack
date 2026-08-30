@@ -5,6 +5,7 @@ import { RequestWithUser } from '../types/request-with-user';
 export interface AuthenticatedUser {
   id: string;
   username: string;
+  fullName: string;
   role: Role;
   mustChangePassword: boolean;
 }
