@@ -8,10 +8,10 @@ import {
   ConsumptionDto,
   PaginatedResponse,
 } from '@labtrack/shared';
-import { Prisma } from '../prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { runInTransaction } from '../common/prisma/transaction';
 import { toConsumptionDto } from '../common/mappers/consumption.mapper';
+import { buildConsumptionWhere } from './consumption-where';
 import { CreateConsumptionDto } from './dto/create-consumption.dto';
 import { ListConsumptionsQueryDto } from './dto/list-consumptions-query.dto';
 import { VoidConsumptionDto } from './dto/void-consumption.dto';
@@ -87,40 +87,7 @@ export class ConsumptionsService {
     query: ListConsumptionsQueryDto,
     isAdmin: boolean,
   ): Promise<PaginatedResponse<ConsumptionDto>> {
-    const where: Prisma.ConsumptionWhereInput = {};
-
-    if (!query.includeVoided) {
-      where.active = true;
-    }
-    if (query.batchId) {
-      where.batchId = query.batchId;
-    }
-    if (query.reagentId) {
-      // A consumption belongs to a batch, and a batch to a reagent: filtering
-      // by reagent means "any of that reagent's batches".
-      where.batch = {
-        reagentId: query.reagentId,
-        // A non-admin must never read a deactivated reagent's or batch's
-        // name, lot number or history through this endpoint: those are
-        // "deleted" for them everywhere else (spec §6.1), and consumptions
-        // otherwise carries them straight through with no filter of its own.
-        ...(isAdmin ? {} : { active: true, reagent: { active: true } }),
-      };
-    } else if (!isAdmin) {
-      where.batch = { active: true, reagent: { active: true } };
-    }
-    if (query.madeById) {
-      where.madeById = query.madeById;
-    }
-    if (query.purpose) {
-      where.purpose = { contains: query.purpose, mode: 'insensitive' };
-    }
-    if (query.from || query.to) {
-      where.consumedAt = {
-        ...(query.from ? { gte: new Date(query.from) } : {}),
-        ...(query.to ? { lte: new Date(query.to) } : {}),
-      };
-    }
+    const where = buildConsumptionWhere(query, isAdmin);
 
     // Count and rows in one transaction with the same `where`, so the
     // paginator can never show a total that disagrees with the page. The `id`
