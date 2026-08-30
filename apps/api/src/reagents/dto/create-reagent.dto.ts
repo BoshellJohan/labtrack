@@ -1,11 +1,11 @@
 import {
   IsString,
   IsUrl,
-  Matches,
   MaxLength,
   MinLength,
   ValidateIf,
 } from 'class-validator';
+import { IsCasNumber } from '../../common/validation/cas-number';
 
 export class CreateReagentDto {
   @IsString()
@@ -14,10 +14,9 @@ export class CreateReagentDto {
   name!: string;
 
   // CAS numbers are 2-7 digits, 2 digits and a check digit, e.g. 67-64-1.
+  // The check digit itself is verified, not only the shape.
   @IsString()
-  @Matches(/^\d{2,7}-\d{2}-\d$/, {
-    message: 'casNumber must look like 67-64-1',
-  })
+  @IsCasNumber()
   casNumber!: string;
 
   // A create has nothing to clear yet, so `null` is rejected here — only
