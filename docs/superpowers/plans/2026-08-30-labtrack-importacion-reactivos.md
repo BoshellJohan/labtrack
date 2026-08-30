@@ -282,9 +282,33 @@ export interface ImportRow {
   locationName: string;
 }
 
+/**
+ * Codes, not sentences. §5.4 of the MVP spec settled this for the whole system:
+ * the response carries a stable code and the client translates it, so raw
+ * server text never reaches the interface. These issues are rendered straight
+ * into the preview table, which makes this the one place in the import where
+ * that rule is load-bearing rather than theoretical.
+ */
+export type RowIssueCode =
+  | 'REQUIRED'
+  | 'INVALID_CAS'
+  | 'INVALID_QUANTITY'
+  | 'INVALID_UNIT'
+  | 'INVALID_DATE'
+  | 'EXPIRATION_BEFORE_ENTRY'
+  | 'TOO_LONG'
+  | 'DUPLICATE_LOT'
+  | 'LOCATION_NOT_FOUND';
+
 export interface RowIssue {
   column: (typeof IMPORT_COLUMNS)[number];
-  message: string;
+  code: RowIssueCode;
+  /**
+   * What the client needs to render the message: the allowed units for
+   * INVALID_UNIT, the other row numbers for DUPLICATE_LOT, the limit for
+   * TOO_LONG. Primitive values only.
+   */
+  params?: Record<string, string | number | readonly string[]>;
 }
 
 export interface RowVerdict {
@@ -386,8 +410,10 @@ describe('validateRowShape', () => {
     expect(validateRowShape(row({ unit: 'ml' }))).toEqual([]);
     const issues = validateRowShape(row({ unit: 'litros' }));
     expect(issues).toHaveLength(1);
-    // The message must list what is valid: the reader has to fix the cell.
-    expect(issues[0].message).toContain('ML');
+    expect(issues[0].code).toBe('INVALID_UNIT');
+    // The allowed units travel as data, so the client can name them in the
+    // message a technician reads while fixing the cell.
+    expect(issues[0].params?.allowed).toEqual(UNITS);
   });
 
   it('rejects a CAS whose check digit is wrong', () => {
@@ -960,8 +986,33 @@ export const IMPORT_ES = {
     `Importación completada: ${reagents} reactivos y ${batches} lotes.`,
   previewFailed: 'No se pudo leer el archivo.',
   confirmFailed: 'No se pudo completar la importación. No se escribió nada.',
+
+  // The API sends a stable code per issue and the client turns it into Spanish
+  // (§5.4 of the MVP spec). These strings are what a technician reads while
+  // fixing a spreadsheet, so they name the cell's problem and, where it helps,
+  // what a valid value looks like.
+  issues: {
+    REQUIRED: () => 'Falta este dato.',
+    INVALID_CAS: () => 'El número CAS no es válido. Revisa el dígito final.',
+    INVALID_QUANTITY: () =>
+      'Escribe la cantidad con punto decimal y hasta 4 decimales, por ejemplo 2.5',
+    INVALID_UNIT: (p: { allowed: readonly string[] }) =>
+      `Unidad no reconocida. Usa una de: ${p.allowed.join(', ')}`,
+    INVALID_DATE: () => 'La fecha no es válida.',
+    EXPIRATION_BEFORE_ENTRY: () =>
+      'El vencimiento debe ser posterior a la fecha de entrada.',
+    TOO_LONG: (p: { max: number }) => `Máximo ${p.max} caracteres.`,
+    DUPLICATE_LOT: (p: { rows: readonly number[] }) =>
+      `Este lote se repite en la fila ${p.rows.join(', ')}.`,
+    LOCATION_NOT_FOUND: () =>
+      'Esta ubicación no existe. Créala antes de importar.',
+  },
 } as const;
 ```
+
+`DUPLICATE_LOT` names the other row because someone correcting a spreadsheet has
+to find both halves of a collision, and a message that says only "repeated" sends
+them scrolling.
 
 `confirmFailed` says "no se escribió nada" because that is true and because it is the thing a user most needs to know after a failed import — otherwise they will wonder what got in.
 
