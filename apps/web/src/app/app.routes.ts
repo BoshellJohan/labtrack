@@ -27,6 +27,12 @@ export const routes: Routes = [
     loadComponent: () =>
       import('./features/reagents/reagents.component').then((m) => m.ReagentsComponent),
   },
+  {
+    path: 'reactivos/importar',
+    canActivate: [authGuard, adminGuard],
+    loadComponent: () =>
+      import('./features/reagents/import/import.component').then((m) => m.ImportComponent),
+  },
   // Any authenticated user records consumption: it is the daily work of the
   // lab, and restricting it would defeat the traceability the system exists
   // for.

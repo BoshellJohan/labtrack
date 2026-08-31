@@ -95,6 +95,15 @@ describe('Reagents (e2e)', () => {
       .expect(400);
   });
 
+  it('rejects a CAS number whose check digit is wrong', async () => {
+    const token = await tokenFor('admin');
+    await request(app.getHttpServer())
+      .post('/reagents')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ name: 'Inventado', casNumber: '12345-67-9' })
+      .expect(400);
+  });
+
   it('rejects a dataSheetUrl without a protocol with 400', async () => {
     await request(app.getHttpServer())
       .post('/reagents')

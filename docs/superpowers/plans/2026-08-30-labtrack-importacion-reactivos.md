@@ -15,7 +15,7 @@
 - Code, identifiers, file names, comments and commit messages in **English**. Every user-visible string is **Spanish** and lives in an `i18n.es.ts` dictionary — never a literal in a template. Spreadsheet column headers are file content and live with the parser, as the export's do.
 - **Both endpoints are ADMIN only.** Creating reagents and batches already is; the import must not be a side door into what manual creation restricts.
 - **All or nothing.** One invalid row means nothing is written. There is no partial import.
-- **Quantities are read as text, never as the cell's number.** `Decimal(12,4)` does not survive a `double`, and the source here is a spreadsheet. Validate with `/^\d{1,8}(\.\d{1,4})?$/`, the same pattern `create-batch.dto.ts` uses.
+- **Quantities are read from `cell.value`, not `cell.text`** — number goes through `String()`, text is used as-is. Measured against ExcelJS: a numeric cell formatted `0.0000` reports `text = "2.5"`, so the text follows the display and could arrive comma-separated in a Spanish locale, rejecting a valid cell. There is no precision risk either way (a `Decimal(12,4)` holds at most 12 significant digits and a `double` round-trips 15–17), so robustness decides it. Validate with `/^\d{1,8}(\.\d{1,4})?$/`, the same pattern `create-batch.dto.ts` uses.
 - **1.000 rows maximum**, and a byte limit on the upload. Over either, reject without writing.
 - `madeById` comes from the authenticated user, **never from the file**.
 - Conventional commit prefixes. TDD: the failing test comes first, and you must see it fail for the stated reason.
@@ -282,9 +282,33 @@ export interface ImportRow {
   locationName: string;
 }
 
+/**
+ * Codes, not sentences. §5.4 of the MVP spec settled this for the whole system:
+ * the response carries a stable code and the client translates it, so raw
+ * server text never reaches the interface. These issues are rendered straight
+ * into the preview table, which makes this the one place in the import where
+ * that rule is load-bearing rather than theoretical.
+ */
+export type RowIssueCode =
+  | 'REQUIRED'
+  | 'INVALID_CAS'
+  | 'INVALID_QUANTITY'
+  | 'INVALID_UNIT'
+  | 'INVALID_DATE'
+  | 'EXPIRATION_BEFORE_ENTRY'
+  | 'TOO_LONG'
+  | 'DUPLICATE_LOT'
+  | 'LOCATION_NOT_FOUND';
+
 export interface RowIssue {
   column: (typeof IMPORT_COLUMNS)[number];
-  message: string;
+  code: RowIssueCode;
+  /**
+   * What the client needs to render the message: the allowed units for
+   * INVALID_UNIT, the other row numbers for DUPLICATE_LOT, the limit for
+   * TOO_LONG. Primitive values only.
+   */
+  params?: Record<string, string | number | readonly string[]>;
 }
 
 export interface RowVerdict {
@@ -386,8 +410,10 @@ describe('validateRowShape', () => {
     expect(validateRowShape(row({ unit: 'ml' }))).toEqual([]);
     const issues = validateRowShape(row({ unit: 'litros' }));
     expect(issues).toHaveLength(1);
-    // The message must list what is valid: the reader has to fix the cell.
-    expect(issues[0].message).toContain('ML');
+    expect(issues[0].code).toBe('INVALID_UNIT');
+    // The allowed units travel as data, so the client can name them in the
+    // message a technician reads while fixing the cell.
+    expect(issues[0].params?.allowed).toEqual(UNITS);
   });
 
   it('rejects a CAS whose check digit is wrong', () => {
@@ -468,14 +494,28 @@ async function workbookWith(rows: string[][]): Promise<Buffer> {
 }
 
 describe('parseWorkbook', () => {
-  it('reads the quantity as text so a decimal survives the spreadsheet', async () => {
+  it('reads a text-formatted quantity exactly as written', async () => {
     const buffer = await workbookWith([
       ['Acetona', '67-64-1', '', 'L-1', '2026-08-01', '', '2.5000', 'ML', 'Estante A1'],
     ]);
-    const rows = await parseWorkbook(buffer);
-    // Not 2.5: the trailing zeros are the scale the column stores, and
-    // reading the cell's numeric value would have dropped them.
-    expect(rows[0].quantity).toBe('2.5000');
+    expect((await parseWorkbook(buffer))[0].quantity).toBe('2.5000');
+  });
+
+  it('reads a numeric quantity from the cell value, not from how it is displayed', async () => {
+    // Write a real number rather than a string, which is what a technician
+    // typing into Excel produces. Reading `cell.text` here would follow the
+    // display format and could return a comma-separated value in a Spanish
+    // locale, rejecting a perfectly valid cell.
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet('Reactivos');
+    sheet.addRow([...IMPORT_COLUMNS]);
+    sheet.addRow(['Acetona', '67-64-1', '', 'L-1', '2026-08-01', '', 2.5, 'ML', 'Estante A1']);
+    sheet.getCell('G2').numFmt = '0.0000';
+    const buffer = (await workbook.xlsx.writeBuffer()) as Buffer;
+
+    // '2.5' and not '2.5000': the trailing zeros are display scale, and
+    // Decimal(12,4) stores 2.5 and 2.5000 as the same number anyway.
+    expect((await parseWorkbook(buffer))[0].quantity).toBe('2.5');
   });
 
   it('numbers rows as the spreadsheet does, so an error names a row the user can find', async () => {
@@ -504,7 +544,7 @@ describe('parseWorkbook', () => {
 
 - [ ] **Step 5: Implement `parse-workbook.ts`**
 
-Loads the buffer with ExcelJS, checks the header row equals `IMPORT_COLUMNS`, then reads each data row using **`cell.text`**, not `cell.value`, with a comment saying why: the numeric value of a quantity cell is a `double`, and `Decimal(12,4)` does not survive one. Throws a `BadRequestException` on a wrong template or over `IMPORT_ROW_LIMIT`.
+Loads the buffer with ExcelJS, checks the header row equals `IMPORT_COLUMNS`, then reads each data row from **`cell.value`** — a number goes through `String()`, a string is used as-is — with a comment saying why: `cell.text` follows the cell's display format, so a numeric cell shown with a comma separator would arrive as `2,5` and be rejected although it is valid. Throws a `BadRequestException` on a wrong template or over `IMPORT_ROW_LIMIT`.
 
 - [ ] **Step 6: Verify**
 
@@ -936,6 +976,7 @@ export const IMPORT_ES = {
     reagent: 'Reactivo',
     lot: 'Lote',
     quantity: 'Cantidad',
+    unit: 'Unidad',
     action: 'Reactivo',
     issues: 'Errores',
   },
@@ -946,14 +987,41 @@ export const IMPORT_ES = {
     `Importación completada: ${reagents} reactivos y ${batches} lotes.`,
   previewFailed: 'No se pudo leer el archivo.',
   confirmFailed: 'No se pudo completar la importación. No se escribió nada.',
+
+  // The API sends a stable code per issue and the client turns it into Spanish
+  // (§5.4 of the MVP spec). These strings are what a technician reads while
+  // fixing a spreadsheet, so they name the cell's problem and, where it helps,
+  // what a valid value looks like.
+  issues: {
+    REQUIRED: () => 'Falta este dato.',
+    INVALID_CAS: () => 'El número CAS no es válido. Revisa el dígito final.',
+    INVALID_QUANTITY: () =>
+      'Escribe la cantidad con punto decimal y hasta 4 decimales, por ejemplo 2.5',
+    INVALID_UNIT: (p: { allowed: readonly string[] }) =>
+      `Unidad no reconocida. Usa una de: ${p.allowed.join(', ')}`,
+    INVALID_DATE: () => 'La fecha no es válida.',
+    EXPIRATION_BEFORE_ENTRY: () =>
+      'El vencimiento debe ser posterior a la fecha de entrada.',
+    TOO_LONG: (p: { max: number }) => `Máximo ${p.max} caracteres.`,
+    DUPLICATE_LOT: (p: { rows: readonly number[] }) =>
+      `Este lote se repite en la fila ${p.rows.join(', ')}.`,
+    LOCATION_NOT_FOUND: () =>
+      'Esta ubicación no existe. Créala antes de importar.',
+  },
 } as const;
 ```
+
+`DUPLICATE_LOT` names the other row because someone correcting a spreadsheet has
+to find both halves of a collision, and a message that says only "repeated" sends
+them scrolling.
 
 `confirmFailed` says "no se escribió nada" because that is true and because it is the thing a user most needs to know after a failed import — otherwise they will wonder what got in.
 
 - [ ] **Step 4: Write the store and component**
 
 The store holds the preview and posts the file (`FormData`) and the confirm. The component renders the summary, the per-row table with the create/reuse column and the issues, and a confirm button disabled while `invalidRows > 0`.
+
+**The quantity is rendered with its unit**, from `verdict.unit`. An earlier draft of this table listed a quantity column and no unit, which would have shown a technician `5` with no way to tell millilitres from litres — in a system whose §4.1 states that consumption never converts between units and that a bare number is ambiguous. Every other surface in this project shows a quantity beside its unit; the preview of what is about to be written must not be the exception. Add a test asserting the rendered row contains both.
 
 `ApiService` gains a method that posts `FormData` — **do not set `Content-Type` by hand**; the browser must set the multipart boundary itself, and an explicit header breaks the upload in a way that looks like a server problem.
 

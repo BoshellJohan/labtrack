@@ -29,6 +29,14 @@ export class ApiService {
     return this.http.patch<T>(`${this.baseUrl}${path}`, body);
   }
 
+  // Posts a multipart body (a file upload). Deliberately does not set
+  // Content-Type: the browser must compute the multipart boundary itself,
+  // and an explicit header here strips it, which the server then reads as a
+  // malformed request rather than the missing header it actually is.
+  postFormData<T>(path: string, formData: FormData): Observable<T> {
+    return this.http.post<T>(`${this.baseUrl}${path}`, formData);
+  }
+
   // Builds the same URL a request to this path/params would hit, without
   // issuing one. This exists to let a component show "this is what would be
   // exported" (e.g. for a test to assert the filters reached the link) — it

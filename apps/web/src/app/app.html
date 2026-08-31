@@ -7,6 +7,7 @@
     @if (auth.isAdmin()) {
       <a mat-button routerLink="/usuarios">{{ common.usersLink }}</a>
       <a mat-button routerLink="/ubicaciones">{{ common.locationsLink }}</a>
+      <a mat-button routerLink="/reactivos/importar">{{ common.importReagentsLink }}</a>
     }
     <span class="spacer"></span>
     <span class="user">{{ auth.currentUser()?.fullName }}</span>
