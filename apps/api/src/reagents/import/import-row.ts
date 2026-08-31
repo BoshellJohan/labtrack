@@ -1,5 +1,6 @@
 import { ImportRow, RowIssue, UNITS, isUnit } from '@labtrack/shared';
 import { isValidCasNumber } from '../../common/validation/cas-number';
+import { normalizeForSearch } from '../../common/text/normalize';
 
 const QUANTITY_SHAPE = /^\d{1,8}(\.\d{1,4})?$/;
 
@@ -72,8 +73,25 @@ export function validateRowShape(row: ImportRow): RowIssue[] {
   return issues;
 }
 
+/**
+ * Keyed with `normalizeForSearch` on the name — the same function
+ * `import.service.ts` uses to resolve reagent identity (see
+ * `reagentIdentityKey`) — so this collision check and that resolution can
+ * never disagree about what counts as "the same reagent". They disagreed
+ * once already: this used to lowercase the name instead, which missed
+ * `Acetona` / `Acetóna` as duplicates even though the resolver treats them
+ * as one reagent, and the two rows would only collide once written, against
+ * the database's partial unique index, well past the point the preview
+ * promised to catch it.
+ *
+ * The CAS number is only trimmed, not lowercased, for the same reason:
+ * `import.service.ts` never lowercases it either (a CAS is digits and
+ * hyphens, so case never legitimately differs), and keeping both sides
+ * identical here removes any question of whether the difference is
+ * meaningful.
+ */
 function lotKey(row: ImportRow): string {
-  return `${row.reagentName.trim().toLowerCase()}|${row.casNumber.trim().toLowerCase()}|${row.lotNumber.trim().toLowerCase()}`;
+  return `${normalizeForSearch(row.reagentName.trim())}|${row.casNumber.trim()}|${row.lotNumber.trim().toLowerCase()}`;
 }
 
 /**

@@ -44,7 +44,18 @@ function cellString(value: ExcelJS.CellValue): string {
  */
 export async function parseWorkbook(buffer: Buffer): Promise<ImportRow[]> {
   const workbook = new ExcelJS.Workbook();
-  await workbook.xlsx.load(buffer as unknown as ExcelJS.Buffer);
+  try {
+    await workbook.xlsx.load(buffer as unknown as ExcelJS.Buffer);
+  } catch {
+    // ExcelJS throws a bare Error on a corrupt or non-Excel buffer — one
+    // that would otherwise escape every exception filter as an uncaught
+    // 500. The controller's fileFilter is the first line of defence, on
+    // the declared MIME type; this is the second, for a file whose bytes
+    // do not match whatever type it claimed to be.
+    throw new BadRequestException(
+      'El archivo no se pudo leer. Verifica que sea un archivo de Excel (.xlsx) válido.',
+    );
+  }
 
   const sheet = workbook.worksheets[0];
   const headerRow = sheet?.getRow(1);

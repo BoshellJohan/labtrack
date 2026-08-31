@@ -98,4 +98,19 @@ describe('findDuplicateLots', () => {
     ];
     expect(findDuplicateLots(rows).size).toBe(0);
   });
+
+  it('collides two rows for the same reagent spelled with and without an accent', () => {
+    // import.service.ts resolves reagent identity with `normalizeForSearch`,
+    // which folds accents (`Acetona` and `Acetóna` are one reagent to it).
+    // This check has to agree, or these two rows preview clean and then
+    // collide only once written, against the database's partial unique
+    // index — exactly the gap closed here.
+    const rows = [
+      row({ rowNumber: 2, reagentName: 'Acetona', lotNumber: 'L-1' }),
+      row({ rowNumber: 5, reagentName: 'Acetóna', lotNumber: 'L-1' }),
+    ];
+    const duplicates = findDuplicateLots(rows);
+    expect(duplicates.get(2)).toEqual([5]);
+    expect(duplicates.get(5)).toEqual([2]);
+  });
 });

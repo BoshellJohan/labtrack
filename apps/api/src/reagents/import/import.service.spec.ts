@@ -76,6 +76,11 @@ describe('ImportService.confirm', () => {
     // active batches: one query for every distinct (reagentId, lotNumber)
     // pair in the file, not one per row.
     expect(client.reagentBatch.findMany).toHaveBeenCalledTimes(1);
+    // And for locations: one query for every distinct location name in the
+    // file, run once inside `preview`. Left unpinned, a per-row location
+    // lookup would regress silently — nothing else in this test would
+    // notice, since it does not touch the write counts.
+    expect(client.location.findMany).toHaveBeenCalledTimes(1);
     expect(client.reagentBatch.create).toHaveBeenCalledTimes(5);
   });
 

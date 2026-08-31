@@ -383,6 +383,27 @@ describe('Reagents import preview (e2e)', () => {
     ).toBe(true);
   });
 
+  it('rejects a file that is not Excel, on its declared type, before it is even parsed', async () => {
+    const token = await tokenFor('admin');
+    await request(app.getHttpServer())
+      .post('/reagents/import/preview')
+      .set('Authorization', `Bearer ${token}`)
+      .attach('file', Buffer.from('reactivo,cas,lote'), 'inventario.csv')
+      .expect(400);
+  });
+
+  it('rejects a corrupt file even when its extension and declared type say Excel', async () => {
+    const token = await tokenFor('admin');
+    await request(app.getHttpServer())
+      .post('/reagents/import/preview')
+      .set('Authorization', `Bearer ${token}`)
+      // Not a real xlsx payload — the fileFilter's MIME check passes on the
+      // extension alone, so this has to be rejected by parseWorkbook's own
+      // try/catch rather than escape as an uncaught 500.
+      .attach('file', Buffer.from('not a real workbook'), 'inventario.xlsx')
+      .expect(400);
+  });
+
   it('refuses a non-admin', async () => {
     const buffer = await workbookWith([
       [
