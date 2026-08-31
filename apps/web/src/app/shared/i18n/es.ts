@@ -8,6 +8,7 @@ export const COMMON_ES = {
   usersLink: 'Usuarios',
   locationsLink: 'Ubicaciones',
   reagentsLink: 'Reactivos',
+  importReagentsLink: 'Importar reactivos',
   registerConsumptionLink: 'Registrar consumo',
   consumptionsLink: 'Consumos',
   logout: 'Cerrar sesión',

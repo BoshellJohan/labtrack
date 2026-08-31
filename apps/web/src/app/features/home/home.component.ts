@@ -25,6 +25,7 @@ import { HOME_ES } from './i18n.es';
         @if (auth.isAdmin()) {
           <a mat-flat-button color="primary" routerLink="/usuarios">{{ text.usersLink }}</a>
           <a mat-flat-button color="primary" routerLink="/ubicaciones">{{ text.locationsLink }}</a>
+          <a mat-flat-button color="primary" routerLink="/reactivos/importar">{{ text.importReagentsLink }}</a>
         }
       </div>
     </mat-card>

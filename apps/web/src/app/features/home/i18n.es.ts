@@ -5,6 +5,7 @@ export const HOME_ES = {
     'Puedes cambiar tu contraseña, consultar los reactivos y, si eres administrador, gestionar los usuarios y las ubicaciones.',
   usersLink: 'Ir a usuarios',
   locationsLink: 'Ir a ubicaciones',
+  importReagentsLink: 'Importar reactivos',
   reagentsLink: 'Ir a reactivos',
   registerConsumptionLink: 'Registrar consumo',
   consumptionsLink: 'Consumos',
