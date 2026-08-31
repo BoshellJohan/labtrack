@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  Body,
   Controller,
   Post,
   UploadedFile,
@@ -9,7 +10,10 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { ImportPreview } from '@labtrack/shared';
 import { ImportService } from './import.service';
 import { parseWorkbook } from './parse-workbook';
+import { ConfirmImportDto } from './dto/confirm-import.dto';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import type { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 
 @Controller('reagents/import')
 export class ImportController {
@@ -35,5 +39,14 @@ export class ImportController {
     }
     const rows = await parseWorkbook(file.buffer);
     return this.imports.preview(rows);
+  }
+
+  @Post('confirm')
+  @Roles('ADMIN')
+  async confirm(
+    @Body() dto: ConfirmImportDto,
+    @CurrentUser() actor: AuthenticatedUser,
+  ): Promise<{ reagentsCreated: number; batchesCreated: number }> {
+    return this.imports.confirm(dto.rows, actor.id);
   }
 }

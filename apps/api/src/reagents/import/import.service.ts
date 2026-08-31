@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import {
   ImportPreview,
   ImportRow,
@@ -7,6 +7,10 @@ import {
   isUnit,
 } from '@labtrack/shared';
 import { PrismaService } from '../../prisma/prisma.service';
+import {
+  runInTransaction,
+  TransactionClient,
+} from '../../common/prisma/transaction';
 import { normalizeForSearch } from '../../common/text/normalize';
 import { validateRowShape, findDuplicateLots } from './import-row';
 
@@ -129,4 +133,114 @@ export class ImportService {
       },
     };
   }
+
+  /**
+   * Re-runs the same validation the preview ran, then writes.
+   *
+   * The re-validation is what makes the stateless design safe: the client
+   * echoes back rows we handed it, and we treat them as untrusted input
+   * because they are. It is the same function the preview called, so the two
+   * cannot drift apart and disagree about what is acceptable.
+   */
+  async confirm(
+    rows: ImportRow[],
+    actorId: string,
+  ): Promise<{ reagentsCreated: number; batchesCreated: number }> {
+    const preview = await this.preview(rows);
+    if (preview.summary.invalidRows > 0) {
+      throw new BadRequestException({
+        code: 'IMPORT_INVALID_ROWS',
+        message: 'The import contains invalid rows and was not applied',
+        verdicts: preview.verdicts.filter((v) => v.issues.length > 0),
+      });
+    }
+
+    // One transaction for the whole file. All or nothing is the contract
+    // (spec §5), so a failure halfway leaves no half-loaded inventory.
+    return runInTransaction(this.prisma, async (tx) => {
+      let reagentsCreated = 0;
+      let batchesCreated = 0;
+
+      // Two rows in the same file may describe the same new reagent (same
+      // normalised name and CAS). Without this map, each such row would
+      // create its own reagent — a duplicate the preview explicitly said
+      // would not happen, because it resolved both rows against the
+      // database, where neither existed yet.
+      const createdReagentIdByKey = new Map<string, string>();
+
+      for (const verdict of preview.verdicts) {
+        const reagentId = await this.resolveReagentId(
+          tx,
+          verdict,
+          actorId,
+          createdReagentIdByKey,
+        );
+        await tx.reagentBatch.create({
+          data: {
+            reagentId,
+            locationId: verdict.locationId as string,
+            lotNumber: verdict.row.lotNumber.trim(),
+            entryDate: new Date(verdict.row.entryDate),
+            expirationDate: verdict.row.expirationDate.trim()
+              ? new Date(verdict.row.expirationDate)
+              : null,
+            initialStock: verdict.row.quantity.trim(),
+            currentStock: verdict.row.quantity.trim(),
+            unit: verdict.unit as NonNullable<typeof verdict.unit>,
+            madeById: actorId,
+          },
+        });
+        batchesCreated += 1;
+      }
+
+      reagentsCreated = createdReagentIdByKey.size;
+
+      return { reagentsCreated, batchesCreated };
+    });
+  }
+
+  /**
+   * Returns the id the batch should attach to: the existing reagent's id
+   * for a `reuse` verdict, or the id of a reagent created earlier in this
+   * same transaction (via `createdReagentIdByKey`), or a newly created one.
+   */
+  private async resolveReagentId(
+    tx: TransactionClient,
+    verdict: RowVerdict,
+    actorId: string,
+    createdReagentIdByKey: Map<string, string>,
+  ): Promise<string> {
+    const key = reagentIdentityKey(verdict.row);
+
+    if (verdict.reagent?.action === 'reuse') {
+      const existing = await tx.reagent.findFirstOrThrow({
+        where: {
+          nameNormalized: normalizeForSearch(verdict.row.reagentName.trim()),
+          casNumber: verdict.row.casNumber.trim(),
+        },
+        select: { id: true },
+      });
+      return existing.id;
+    }
+
+    const alreadyCreated = createdReagentIdByKey.get(key);
+    if (alreadyCreated) {
+      return alreadyCreated;
+    }
+
+    const created = await tx.reagent.create({
+      data: {
+        name: verdict.row.reagentName.trim(),
+        casNumber: verdict.row.casNumber.trim(),
+        madeById: actorId,
+      },
+      select: { id: true },
+    });
+    createdReagentIdByKey.set(key, created.id);
+    return created.id;
+  }
+}
+
+function reagentIdentityKey(row: ImportRow): string {
+  return `${normalizeForSearch(row.reagentName.trim())}|${row.casNumber.trim()}`;
 }

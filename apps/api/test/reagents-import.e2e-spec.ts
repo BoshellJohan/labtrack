@@ -1,11 +1,29 @@
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import * as ExcelJS from 'exceljs';
-import { IMPORT_COLUMNS, ImportPreview } from '@labtrack/shared';
+import { IMPORT_COLUMNS, ImportPreview, ImportRow } from '@labtrack/shared';
 import { createTestApp } from './utils/test-app';
 import { body } from './utils/body';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { PasswordService } from '../src/auth/password.service';
+
+let nextRowNumber = 1;
+
+function rowFor(overrides: Partial<ImportRow>): ImportRow {
+  return {
+    rowNumber: nextRowNumber++,
+    reagentName: 'Acetona',
+    casNumber: '67-64-1',
+    reference: '',
+    lotNumber: 'L-1',
+    entryDate: '2026-08-01',
+    expirationDate: '',
+    quantity: '5',
+    unit: 'ML',
+    locationName: 'Estante A1',
+    ...overrides,
+  };
+}
 
 async function workbookWith(rows: string[][]): Promise<Buffer> {
   const workbook = new ExcelJS.Workbook();
@@ -280,6 +298,202 @@ describe('Reagents import preview (e2e)', () => {
       .post('/reagents/import/preview')
       .set('Authorization', `Bearer ${token}`)
       .attach('file', buffer, 'inventario.xlsx')
+      .expect(403);
+  });
+});
+
+describe('Reagents import confirm (e2e)', () => {
+  let app: INestApplication;
+  let prisma: PrismaService;
+  let passwords: PasswordService;
+
+  beforeAll(async () => {
+    ({ app, prisma } = await createTestApp());
+    passwords = app.get(PasswordService);
+  });
+
+  afterAll(async () => {
+    await app.close();
+  });
+
+  beforeEach(async () => {
+    await prisma.$executeRawUnsafe(
+      'TRUNCATE TABLE "Consumption", "ReagentBatch", "Reagent", "Location", "User" RESTART IDENTITY CASCADE',
+    );
+    const passwordHash = await passwords.hash('initial-password');
+    await prisma.user.createMany({
+      data: [
+        {
+          username: 'admin',
+          fullName: 'Admin',
+          passwordHash,
+          role: 'ADMIN',
+          mustChangePassword: false,
+        },
+        {
+          username: 'ana',
+          fullName: 'Ana Ruiz',
+          passwordHash,
+          role: 'USER',
+          mustChangePassword: false,
+        },
+      ],
+    });
+    const admin = await prisma.user.findUniqueOrThrow({
+      where: { username: 'admin' },
+    });
+    await prisma.location.create({
+      data: { name: 'Estante A1', madeById: admin.id },
+    });
+    await prisma.reagent.create({
+      data: {
+        name: 'Acetona',
+        casNumber: '67-64-1',
+        madeById: admin.id,
+      },
+    });
+  });
+
+  async function tokenFor(username: string): Promise<string> {
+    const response = await request(app.getHttpServer())
+      .post('/auth/login')
+      .send({ username, password: 'initial-password' });
+    return body<{ accessToken: string }>(response).accessToken;
+  }
+
+  it('creates the reagent and its batch, recording the importer as the author', async () => {
+    const token = await tokenFor('admin');
+    const admin = await prisma.user.findUniqueOrThrow({
+      where: { username: 'admin' },
+    });
+    const response = await request(app.getHttpServer())
+      .post('/reagents/import/confirm')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ rows: [rowFor({ reagentName: 'Nuevo', casNumber: '64-17-5' })] })
+      .expect(201);
+
+    expect(body<{ reagentsCreated: number }>(response).reagentsCreated).toBe(1);
+    const created = await prisma.reagent.findFirstOrThrow({
+      where: { name: 'Nuevo' },
+    });
+    // Never from the file: the author is whoever was authenticated.
+    expect(created.madeById).toBe(admin.id);
+  });
+
+  it('adds a batch to the existing reagent when name and CAS match', async () => {
+    const token = await tokenFor('admin');
+    const before = await prisma.reagent.count();
+    await request(app.getHttpServer())
+      .post('/reagents/import/confirm')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        rows: [
+          rowFor({
+            reagentName: 'Acetona',
+            casNumber: '67-64-1',
+            lotNumber: 'L-77',
+          }),
+        ],
+      })
+      .expect(201);
+
+    expect(await prisma.reagent.count()).toBe(before);
+    expect(
+      await prisma.reagentBatch.findFirst({ where: { lotNumber: 'L-77' } }),
+    ).not.toBeNull();
+  });
+
+  it('creates one reagent and two batches when two rows describe the same new reagent', async () => {
+    const token = await tokenFor('admin');
+    const reagentsBefore = await prisma.reagent.count();
+    const response = await request(app.getHttpServer())
+      .post('/reagents/import/confirm')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        rows: [
+          rowFor({
+            reagentName: 'Nuevo',
+            casNumber: '64-17-5',
+            lotNumber: 'A',
+          }),
+          rowFor({
+            reagentName: 'Nuevo',
+            casNumber: '64-17-5',
+            lotNumber: 'B',
+          }),
+        ],
+      })
+      .expect(201);
+
+    expect(
+      body<{ reagentsCreated: number; batchesCreated: number }>(response),
+    ).toEqual({ reagentsCreated: 1, batchesCreated: 2 });
+    expect(await prisma.reagent.count()).toBe(reagentsBefore + 1);
+    const reagent = await prisma.reagent.findFirstOrThrow({
+      where: { name: 'Nuevo' },
+    });
+    expect(
+      await prisma.reagentBatch.count({ where: { reagentId: reagent.id } }),
+    ).toBe(2);
+  });
+
+  it('writes nothing when a single row is invalid', async () => {
+    const token = await tokenFor('admin');
+    const reagentsBefore = await prisma.reagent.count();
+    const batchesBefore = await prisma.reagentBatch.count();
+
+    await request(app.getHttpServer())
+      .post('/reagents/import/confirm')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        rows: [
+          rowFor({
+            reagentName: 'Buena 1',
+            casNumber: '64-17-5',
+            lotNumber: 'A',
+          }),
+          rowFor({
+            reagentName: 'Buena 2',
+            casNumber: '7440-31-5',
+            lotNumber: 'B',
+          }),
+          rowFor({
+            reagentName: 'Mala',
+            casNumber: '12345-67-9',
+            lotNumber: 'C',
+          }),
+        ],
+      })
+      .expect(400);
+
+    // All or nothing is the property; this is what proves it is a behaviour and
+    // not an intention.
+    expect(await prisma.reagent.count()).toBe(reagentsBefore);
+    expect(await prisma.reagentBatch.count()).toBe(batchesBefore);
+  });
+
+  it('does not trust the rows the client echoes back', async () => {
+    const token = await tokenFor('admin');
+    const before = await prisma.reagentBatch.count();
+
+    await request(app.getHttpServer())
+      .post('/reagents/import/confirm')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ rows: [rowFor({ locationName: 'Estante Z', lotNumber: 'X' })] })
+      .expect(400);
+
+    // Without this the stateless design would be unsafe and nobody would notice:
+    // the preview said nothing about this row, because the client never showed
+    // it to us.
+    expect(await prisma.reagentBatch.count()).toBe(before);
+  });
+
+  it('refuses a non-admin', async () => {
+    const token = await tokenFor('ana');
+    await request(app.getHttpServer())
+      .post('/reagents/import/confirm')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ rows: [rowFor({})] })
       .expect(403);
   });
 });
