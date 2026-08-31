@@ -976,6 +976,7 @@ export const IMPORT_ES = {
     reagent: 'Reactivo',
     lot: 'Lote',
     quantity: 'Cantidad',
+    unit: 'Unidad',
     action: 'Reactivo',
     issues: 'Errores',
   },
@@ -1019,6 +1020,8 @@ them scrolling.
 - [ ] **Step 4: Write the store and component**
 
 The store holds the preview and posts the file (`FormData`) and the confirm. The component renders the summary, the per-row table with the create/reuse column and the issues, and a confirm button disabled while `invalidRows > 0`.
+
+**The quantity is rendered with its unit**, from `verdict.unit`. An earlier draft of this table listed a quantity column and no unit, which would have shown a technician `5` with no way to tell millilitres from litres — in a system whose §4.1 states that consumption never converts between units and that a bare number is ambiguous. Every other surface in this project shows a quantity beside its unit; the preview of what is about to be written must not be the exception. Add a test asserting the rendered row contains both.
 
 `ApiService` gains a method that posts `FormData` — **do not set `Content-Type` by hand**; the browser must set the multipart boundary itself, and an explicit header breaks the upload in a way that looks like a server problem.
 
