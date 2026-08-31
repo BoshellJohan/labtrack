@@ -1,162 +1,177 @@
 # LabTrack
 
-Plataforma para gestionar el inventario de reactivos de un laboratorio: qué
-reactivos hay, en qué cantidad llegaron, dónde están y qué consumo se hace de
-ellos.
+Plataforma de inventario de reactivos para laboratorio: qué reactivos hay, en qué cantidad llegaron, dónde están y en qué se han consumido.
 
-El código, la base de datos y los mensajes de log están en inglés; la interfaz
-de usuario está en español.
+Nace de un problema concreto: un laboratorio universitario necesita justificar en qué se fue cada reactivo, y esa trazabilidad vive normalmente en una hoja de cálculo que nadie mantiene al día.
+
+> **Convención de idioma.** El código, el esquema de base de datos y los mensajes de log están en **inglés**. La interfaz de usuario está íntegramente en **español**, y cada cadena visible vive en un diccionario `i18n.es.ts` — nunca incrustada en una plantilla.
+
+<!-- IMAGEN: pantalla principal de la aplicación en uso.
+     Pendiente: se añadirá una captura real cuando el laboratorio empiece a
+     usarla con datos propios, y después del rediseño visual. -->
+
+---
 
 ## Estado
 
-**Fase 1 completa**: monorepo, autenticación y administración de usuarios.
+Alcance planificado **completo** y desplegado: las cuatro fases del MVP más las dos funcionalidades que el diseño había dejado explícitamente fuera.
 
-Los reactivos, los lotes y los registros de consumo son de la Fase 2. La ruta
-`/` es hoy una pantalla provisional que anuncia esa fase.
+| Fase | Contenido |
+|---|---|
+| 1 | Monorepo, autenticación JWT, administración de usuarios, despliegue de punta a punta |
+| 2 | Ubicaciones, reactivos y lotes; listados paginados con filtros simples |
+| 3 | Consumos: registro, listado descendente y anulación con justificación |
+| 4 | Filtro compuesto por consumo y deuda de interfaz |
+| — | Exportación de consumos a Excel y PDF |
+| — | Importación de reactivos desde Excel con vista previa |
 
-- Diseño: [`docs/superpowers/specs/2026-08-23-labtrack-mvp-design.md`](docs/superpowers/specs/2026-08-23-labtrack-mvp-design.md)
-- Plan de la Fase 1: [`docs/superpowers/plans/2026-08-23-labtrack-fase-1-auth.md`](docs/superpowers/plans/2026-08-23-labtrack-fase-1-auth.md)
+**Suites:** 129 pruebas unitarias de API · 148 end-to-end contra PostgreSQL real · 113 en el cliente.
 
-## Estructura
+---
+
+## Stack y versiones
+
+| Capa | Tecnología | Versión |
+|---|---|---|
+| Runtime | Node.js | `>= 24` |
+| API | NestJS | 11 |
+| ORM | Prisma (con driver adapter) | 7.9 |
+| Base de datos | PostgreSQL | 18 |
+| Cliente | Angular (standalone + signals) | 22.1 |
+| Componentes | Angular Material 3 | 22.1 |
+| Lenguaje | TypeScript | 6.0 |
+| Validación | class-validator · zod | 0.15 · 4.4 |
+| Documentos | ExcelJS · PDFKit | 4.4 · 0.20 |
+| Pruebas | Jest + Supertest · Vitest | 30 · 4 |
+
+**Despliegue:** cliente en Netlify, API en Railway, base de datos en Neon.
+
+---
+
+## Arquitectura
+
+Monorepo con workspaces de npm y un paquete compartido que ambos extremos consumen, de modo que un cambio de contrato rompe la compilación en los dos lados a la vez en lugar de aparecer en tiempo de ejecución en uno.
 
 ```
-packages/shared   @labtrack/shared — tipos del contrato HTTP, usados por API y cliente
-apps/api          NestJS + Prisma + PostgreSQL
-apps/web          Angular + Angular Material, señales, modo estricto
+apps/
+  api/        NestJS · controller · service · module · dto por módulo
+  web/        Angular · componentes standalone, un store con signals por pantalla
+packages/
+  shared/     DTOs y tipos que cruzan el cable
+docs/
+  superpowers/specs/   documentos de diseño
+  superpowers/plans/   planes de implementación
 ```
 
-## Requisitos
+### Decisiones que explican el resto del código
 
-- Node.js 24 o superior
-- PostgreSQL 16 o superior
+**Nada se borra físicamente.** Cada tabla lleva un campo `active`, y "eliminar" es ponerlo en `false`. Un registro desactivado es invisible para todo el mundo salvo un administrador, y esa regla se aplica en el servidor en las cuatro superficies de filtrado del sistema.
 
-Con Docker también sirve `docker compose -f docker-compose.test.yml up -d`, que
-levanta un PostgreSQL con las credenciales del `.env.example`.
+**Las cantidades son `Decimal(12,4)` y viajan como cadenas.** Un `number` de JavaScript no las representa con fidelidad. Hay una sola excepción, deliberada y acotada: la celda numérica del Excel exportado, porque una columna de texto no se puede sumar y el archivo no cumpliría su único propósito.
+
+**Las unidades no se convierten nunca.** Un reactivo puede tener lotes en mililitros y en litros a la vez, así que las existencias se agrupan **por unidad** y nunca se suman entre ellas. Una cifra sin su unidad no aparece en ninguna pantalla.
+
+**Toda escritura de lectura-y-después-escritura ocurre en una transacción Serializable.** Registrar un consumo valida las existencias y las decrementa en el mismo bloque; con un aislamiento más débil, dos peticiones simultáneas podrían leer un stock que permite ambas y sobregirar el lote.
+
+**La aritmética decimal la hace Postgres**, no Node: los movimientos de existencias usan `increment` y `decrement` sobre la columna.
+
+---
+
+## Funcionalidades
+
+### Autenticación y usuarios
+
+Sin registro público. Un administrador crea los usuarios con una contraseña inicial, y el sistema obliga a cambiarla en el primer acceso. La estrategia JWT **revalida el usuario en cada petición**, de modo que desactivar a alguien lo expulsa de inmediato en lugar de esperar a que caduque su token.
+
+<!-- IMAGEN: pantalla de login y de administración de usuarios. -->
+
+### Inventario
+
+Ubicaciones, reactivos y lotes. Un reactivo es la sustancia; un **lote** es una entrega física concreta, con su número, sus fechas, su unidad y su ubicación. El consumo se registra siempre contra un lote, y de ahí sale la unidad sin ambigüedad.
+
+El listado es paginado —nunca se consulta todo— y filtra por nombre (parcial, **insensible a mayúsculas y acentos**, con índice de trigramas), CAS, ubicación, próximo vencimiento y existencias bajas.
+
+<!-- IMAGEN: listado de reactivos con el panel de filtros y los lotes desplegados. -->
+
+### Consumos
+
+Registro guiado: se elige el reactivo, después el lote —mostrando existencias y vencimiento—, y la cantidad se valida contra el stock antes de enviar nada.
+
+El listado va en orden descendente con filtros por reactivo, lote, autor, propósito y rango de fechas. **La anulación es solo para administradores y exige justificación**: devuelve la cantidad al lote, y el motivo queda en la propia fila, de modo que explicar una desaparición no requiere consultar una tabla de auditoría aparte.
+
+<!-- IMAGEN: registro de consumo y listado con una fila anulada mostrando su motivo. -->
+
+### Filtro compuesto
+
+"Reactivos cuyo consumo superó X en un rango de fechas" no es expresable como un filtro sobre reactivos: es una agregación con `HAVING` sobre consumos agrupados. Se resuelve con una consulta preparada que devuelve los identificadores que califican, y el camino normal de Prisma hidrata el resto.
+
+**El umbral exige una unidad.** Sumar mililitros con litros produciría una cifra que no corresponde a ninguna cantidad física, así que el filtro opera dentro de una unidad.
+
+<!-- IMAGEN: panel de filtro compuesto en la pantalla de reactivos. -->
+
+### Exportación
+
+`GET /consumptions/export.xlsx` y `export.pdf`, sobre exactamente los mismos filtros que el listado.
+
+- **Excel** — tabla plana para analizar. La cantidad es celda numérica y la unidad va en columna propia, de modo que una tabla dinámica pueda agrupar por reactivo *y* unidad.
+- **PDF** — informe archivable. Declara el periodo, **los filtros aplicados en texto legible**, quién lo generó y cuándo. Se genera en el servidor porque es el único que puede afirmar con autoridad lo último.
+
+Ambos cuentan antes de escribir: una vez empieza el streaming el código de estado ya se envió, así que un rechazo por exceso de filas llega como error y nunca como archivo truncado.
+
+<!-- IMAGEN: PDF generado, mostrando el encabezado con periodo, filtros y autor. -->
+
+### Importación
+
+Dos pasos sin estado en el servidor. La vista previa parsea, valida y **no escribe nada**; la confirmación revalida con la misma función y aplica todo en una transacción única.
+
+Una fila describe un lote y, con él, su reactivo — que se crea si no existe. Como nada identifica un reactivo de forma única, la coincidencia es por **nombre y CAS juntos**, y un error de tecleo produciría un duplicado casi idéntico sin dar error. Por eso la vista previa dice, fila a fila, si va a **crear o reutilizar** un reactivo: es lo único que hace visible ese riesgo antes de escribir.
+
+**Una sola fila inválida bloquea toda la importación.** Se corrige el archivo y se vuelve a subir; así nunca hay que averiguar qué entró y qué no.
+
+<!-- IMAGEN: vista previa de importación con la columna crear/reutilizar y una fila con error. -->
+
+---
 
 ## Puesta en marcha
 
+Requiere Node 24 y un PostgreSQL accesible.
+
 ```bash
 npm ci
+cp apps/api/.env.example apps/api/.env    # y completar los valores
+npm run db:seed -w apps/api               # crea el administrador inicial
+npm run start:dev -w apps/api             # API en :3000
+npm start -w apps/web                     # cliente en :4200
 ```
 
-`npm ci` construye `@labtrack/shared` y genera el cliente de Prisma
-automáticamente. Sin ese paso nada compila, así que no se puede omitir.
+El seed toma el usuario y la contraseña de `SEED_ADMIN_USERNAME` y `SEED_ADMIN_PASSWORD`, y crea la cuenta con cambio de contraseña obligatorio. Es idempotente: si el usuario ya existe, no hace nada.
 
-El cliente de Prisma se genera en `apps/api/src/generated/prisma`, fuera del
-control de versiones: se reconstruye en cada instalación. El código de la
-aplicación no lo importa directamente sino a través de
-`apps/api/src/prisma/client.ts`, para que la ruta de salida siga siendo un
-detalle interno.
-
-**Base de datos.** Crea el rol y la base, con un superusuario de PostgreSQL:
-
-```sql
-CREATE ROLE labtrack LOGIN PASSWORD 'labtrack';
-CREATE DATABASE labtrack OWNER labtrack;
-```
-
-**Variables de entorno del API:**
+### Pruebas
 
 ```bash
-cp apps/api/.env.example apps/api/.env
+npm run test -w apps/api        # unitarias
+npm run test:e2e -w apps/api    # contra un PostgreSQL real
+npm run test -w apps/web
 ```
 
-Ajusta `DATABASE_URL` si tu contraseña no es la del ejemplo, y pon un
-`JWT_SECRET` propio. El proceso no arranca si falta alguna variable o si el
-secreto tiene menos de 16 caracteres: es deliberado, para que un despliegue mal
-configurado falle al arrancar y no en el primer inicio de sesión.
+Las suites e2e truncan tablas y se ejecutan en serie. **Conviene no tener un servidor de desarrollo levantado mientras corren**: una conexión viva bloquea el `TRUNCATE` y produce fallos que no dejan rastro en la propia salida.
 
-**Migraciones y primer administrador:**
+### Despliegue
 
-```bash
-cd apps/api && npx prisma migrate deploy && cd ../..
-npm run db:seed -w apps/api
-```
+En Railway, `start:prod` ejecuta `prisma migrate deploy` antes de arrancar, así que las migraciones se aplican solas. La migración de búsqueda por nombre crea las extensiones `unaccent` y `pg_trgm`, lo que requiere que el rol de base de datos pueda crearlas.
 
-La semilla crea el administrador con `SEED_ADMIN_USERNAME` y
-`SEED_ADMIN_PASSWORD`, obligado a cambiar la contraseña en su primer inicio de
-sesión. Es idempotente y **nunca sobrescribe la contraseña de un administrador
-que ya existe**, de modo que volver a desplegar no le resetea la clave a nadie.
+En Netlify, el build genera la configuración del cliente a partir de la variable `API_URL` y **falla si no está definida**, en lugar de publicar un cliente apuntando al host equivocado.
 
-**Arrancar** (dos terminales):
+---
 
-```bash
-npm run start:dev -w apps/api     # http://localhost:3000
-npm start -w apps/web             # http://localhost:4200
-```
+## Documentación de diseño
 
-## Pruebas
+Cada funcionalidad tiene su documento de diseño y su plan de implementación en [`docs/superpowers/`](docs/superpowers/). Los documentos registran también las decisiones que se revisaron y las que resultaron equivocadas, con el motivo — son más útiles leídos como el historial de un razonamiento que como una especificación cerrada.
 
-```bash
-npm test                          # shared + API (unitarias) + cliente
-npm run test:e2e -w apps/api      # requiere la base de datos en marcha
-```
+## Fuera de alcance
 
-Las suites e2e comparten una única base de datos y cada una vacía la tabla
-`User`, así que **no pueden ejecutarse en paralelo**. La serialización está
-fijada con `maxWorkers: 1` en `apps/api/test/jest-e2e.json`; quitarla reintroduce
-carreras que se manifiestan como pruebas intermitentes. No ejecutes el e2e
-contra una base con datos que quieras conservar.
+Conversión entre unidades, gestión de proveedores o pedidos, y deshacer una importación ya confirmada.
 
-## Variables de entorno
+## Licencia
 
-| Variable | Servicio | Uso |
-|---|---|---|
-| `DATABASE_URL` | api | Cadena de conexión a PostgreSQL |
-| `JWT_SECRET` | api | Firma de los tokens; mínimo 16 caracteres |
-| `JWT_EXPIRES_IN` | api | Vigencia del token (por defecto `8h`) |
-| `CORS_ORIGIN` | api | Origen del cliente autorizado |
-| `PORT` | api | Puerto de escucha (por defecto `3000`) |
-| `SEED_ADMIN_USERNAME` | api | Usuario del administrador inicial |
-| `SEED_ADMIN_PASSWORD` | api | Contraseña inicial de ese administrador |
-| `API_URL` | web (build) | Origen del API en producción |
-
-## Despliegue
-
-**Base de datos — Neon.** Crea el proyecto y usa la cadena de conexión con
-*pooling* como `DATABASE_URL`. Conviene una rama aparte para probar migraciones
-antes de aplicarlas a producción.
-
-**API — Railway.** Directorio raíz `/`:
-
-- Build: `npm ci && npm run build -w apps/api`
-- Start: `npm run start:prod -w apps/api`
-
-`start:prod` ejecuta `prisma migrate deploy` antes de arrancar, de modo que un
-despliegue nunca queda con el esquema desfasado respecto al código. Variables:
-`DATABASE_URL`, `JWT_SECRET`, `JWT_EXPIRES_IN`, `CORS_ORIGIN` (el dominio de
-Netlify), `SEED_ADMIN_USERNAME` y `SEED_ADMIN_PASSWORD`. Railway inyecta `PORT`.
-
-**Cliente — Netlify.** La configuración está en `netlify.toml`; basta con
-definir `API_URL` con el dominio del API en Railway. El build genera
-`environment.production.ts` a partir de esa variable y **falla si no está
-definida**, para que el cliente no se publique nunca apuntando al host
-equivocado.
-
-Tras el primer despliegue, ejecuta la semilla en Railway
-(`npm run db:seed -w apps/api`), entra con el administrador y cambia la
-contraseña de inmediato.
-
-## Decisiones que conviene conocer
-
-- **No hay borrado físico.** Ningún servicio ejecuta `DELETE`; cada tabla tiene
-  un campo `active` y desactivar es `PATCH /:id/deactivate`. La restricción se
-  refleja en el API: no existe ningún verbo `DELETE`.
-- **Auditoría.** Todas las tablas llevan `createdAt`, `updatedAt` y `madeById`.
-  `madeById` jamás se lee del cuerpo de la petición: sale del token, y el
-  `ValidationPipe` rechaza con 400 cualquier intento de enviarlo.
-- **Sesión.** JWT de 8 horas sin *refresh token*. La estrategia relee el usuario
-  en cada petición, así que desactivar a alguien lo expulsa de inmediato en vez
-  de al expirar su token.
-- **La autorización vive en el servidor.** Que el cliente oculte un enlace es
-  comodidad visual; quien decide es el `RolesGuard` del API.
-- **Prisma 7 conecta por *driver adapter*.** El pool de conexiones ya no lo
-  gestiona el motor de Prisma sino el driver `pg` dentro del proceso Node. La
-  cadena de conexión se le pasa desde `ConfigService`, así que usa el valor que
-  `parseEnv` ya validó en vez de leer `process.env` por su cuenta.
-- **La configuración de Prisma vive en `apps/api/prisma.config.ts`**, no en
-  `schema.prisma` ni en `package.json`: ahí están la URL, la ruta de migraciones
-  y el comando de semilla. Ese archivo se carga en *todos* los comandos, incluido
-  `prisma generate`, que no necesita base de datos; por eso no aborta cuando
-  falta `DATABASE_URL` — hacerlo rompería `npm ci` en cualquier máquina sin
-  `.env`.
+Sin licencia definida todavía.
