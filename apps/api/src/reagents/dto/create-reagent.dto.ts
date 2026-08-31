@@ -1,3 +1,4 @@
+import { Transform, TransformFnParams } from 'class-transformer';
 import {
   IsString,
   IsUrl,
@@ -5,7 +6,10 @@ import {
   MinLength,
   ValidateIf,
 } from 'class-validator';
-import { IsCasNumber } from '../../common/validation/cas-number';
+import {
+  IsCasNumber,
+  normalizeCasNumber,
+} from '../../common/validation/cas-number';
 
 export class CreateReagentDto {
   @IsString()
@@ -16,6 +20,14 @@ export class CreateReagentDto {
   // CAS numbers are 2-7 digits, 2 digits and a check digit, e.g. 67-64-1.
   // The check digit itself is verified, not only the shape.
   @IsString()
+  // Normalised before validating AND before storing. A CAS pasted from a
+  // catalogue or a PDF often carries an en dash or a stray space, which
+  // render identically to a plain hyphen. Validating a cleaned value while
+  // storing the raw one would create a reagent that its own CAS filter
+  // cannot find.
+  @Transform(({ value }: TransformFnParams): unknown =>
+    typeof value === 'string' ? normalizeCasNumber(value) : value,
+  )
   @IsCasNumber()
   casNumber!: string;
 

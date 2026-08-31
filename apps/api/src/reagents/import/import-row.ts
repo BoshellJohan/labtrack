@@ -1,5 +1,8 @@
 import { ImportRow, RowIssue, UNITS, isUnit } from '@labtrack/shared';
-import { isValidCasNumber } from '../../common/validation/cas-number';
+import {
+  isValidCasNumber,
+  normalizeCasNumber,
+} from '../../common/validation/cas-number';
 import { normalizeForSearch } from '../../common/text/normalize';
 
 const QUANTITY_SHAPE = /^\d{1,8}(\.\d{1,4})?$/;
@@ -17,9 +20,9 @@ export function validateRowShape(row: ImportRow): RowIssue[] {
     issues.push({ column: 'Reactivo', code: 'REQUIRED' });
   }
 
-  if (!row.casNumber.trim()) {
+  if (!normalizeCasNumber(row.casNumber)) {
     issues.push({ column: 'CAS', code: 'REQUIRED' });
-  } else if (!isValidCasNumber(row.casNumber.trim())) {
+  } else if (!isValidCasNumber(normalizeCasNumber(row.casNumber))) {
     issues.push({ column: 'CAS', code: 'INVALID_CAS' });
   }
 
@@ -91,7 +94,7 @@ export function validateRowShape(row: ImportRow): RowIssue[] {
  * meaningful.
  */
 function lotKey(row: ImportRow): string {
-  return `${normalizeForSearch(row.reagentName.trim())}|${row.casNumber.trim()}|${row.lotNumber.trim().toLowerCase()}`;
+  return `${normalizeForSearch(row.reagentName.trim())}|${normalizeCasNumber(row.casNumber)}|${row.lotNumber.trim().toLowerCase()}`;
 }
 
 /**

@@ -12,6 +12,7 @@ import {
   TransactionClient,
 } from '../../common/prisma/transaction';
 import { normalizeForSearch } from '../../common/text/normalize';
+import { normalizeCasNumber } from '../../common/validation/cas-number';
 import { validateRowShape, findDuplicateLots } from './import-row';
 
 /**
@@ -57,7 +58,7 @@ export class ImportService {
     const identityPairs = new Map<string, { name: string; cas: string }>();
     for (const row of rows) {
       const name = normalizeForSearch(row.reagentName.trim());
-      const cas = row.casNumber.trim();
+      const cas = normalizeCasNumber(row.casNumber);
       if (!name || !cas) {
         continue;
       }
@@ -99,7 +100,7 @@ export class ImportService {
       { reagentId: string; lotNumber: string }
     >();
     for (const row of rows) {
-      const key = `${normalizeForSearch(row.reagentName.trim())}|${row.casNumber.trim()}`;
+      const key = `${normalizeForSearch(row.reagentName.trim())}|${normalizeCasNumber(row.casNumber)}`;
       const existing = existingByKey.get(key);
       const lotNumber = row.lotNumber.trim();
       if (existing && lotNumber) {
@@ -138,7 +139,7 @@ export class ImportService {
       }
 
       const normalizedName = normalizeForSearch(row.reagentName.trim());
-      const cas = row.casNumber.trim();
+      const cas = normalizeCasNumber(row.casNumber);
       let reagent: RowVerdict['reagent'] = null;
       if (normalizedName && cas) {
         const existing = existingByKey.get(`${normalizedName}|${cas}`);
@@ -220,7 +221,7 @@ export class ImportService {
     for (const verdict of preview.verdicts) {
       if (verdict.reagent?.action === 'reuse') {
         const name = normalizeForSearch(verdict.row.reagentName.trim());
-        const cas = verdict.row.casNumber.trim();
+        const cas = normalizeCasNumber(verdict.row.casNumber);
         reuseKeys.set(`${name}|${cas}`, { name, cas });
       }
     }
@@ -327,7 +328,7 @@ export class ImportService {
     const created = await tx.reagent.create({
       data: {
         name: verdict.row.reagentName.trim(),
-        casNumber: verdict.row.casNumber.trim(),
+        casNumber: normalizeCasNumber(verdict.row.casNumber),
         madeById: actorId,
       },
       select: { id: true },
@@ -338,5 +339,5 @@ export class ImportService {
 }
 
 function reagentIdentityKey(row: ImportRow): string {
-  return `${normalizeForSearch(row.reagentName.trim())}|${row.casNumber.trim()}`;
+  return `${normalizeForSearch(row.reagentName.trim())}|${normalizeCasNumber(row.casNumber)}`;
 }

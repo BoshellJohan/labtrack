@@ -95,6 +95,51 @@ describe('Reagents (e2e)', () => {
       .expect(400);
   });
 
+  it('accepts a CAS pasted with en dashes and stores it with plain hyphens', async () => {
+    const token = await tokenFor('admin');
+    const response = await request(app.getHttpServer())
+      .post('/reagents')
+      .set('Authorization', `Bearer ${token}`)
+      // What a user gets when copying from a catalogue or a PDF. It renders
+      // identically to a plain hyphen, so being told the format is invalid
+      // reads as the system being wrong.
+      .send({ name: 'Acetona pegada', casNumber: '67–64–1' })
+      .expect(201);
+
+    // Stored normalised, not merely accepted: keeping the en dash would leave
+    // the reagent unfindable by its own CAS number.
+    expect(body<ReagentDto>(response).casNumber).toBe('67-64-1');
+  });
+
+  it('finds that reagent by a plain-hyphen CAS filter', async () => {
+    const token = await tokenFor('admin');
+    await request(app.getHttpServer())
+      .post('/reagents')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ name: 'Acetona pegada', casNumber: '67–64–1' })
+      .expect(201);
+
+    const response = await request(app.getHttpServer())
+      .get('/reagents?casNumber=67-64-1')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    expect(
+      body<PaginatedResponse<ReagentDto>>(response).data.map((r) => r.name),
+    ).toContain('Acetona pegada');
+  });
+
+  it('trims stray whitespace around a CAS number', async () => {
+    const token = await tokenFor('admin');
+    const response = await request(app.getHttpServer())
+      .post('/reagents')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ name: 'Acetona espaciada', casNumber: '  67-64-1  ' })
+      .expect(201);
+
+    expect(body<ReagentDto>(response).casNumber).toBe('67-64-1');
+  });
+
   it('rejects a CAS number whose check digit is wrong', async () => {
     const token = await tokenFor('admin');
     await request(app.getHttpServer())

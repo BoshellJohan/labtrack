@@ -1,4 +1,4 @@
-import { isValidCasNumber } from './cas-number';
+import { isValidCasNumber, normalizeCasNumber } from './cas-number';
 
 describe('isValidCasNumber', () => {
   // Verified against the real registry before this plan was written: each of
@@ -23,5 +23,44 @@ describe('isValidCasNumber', () => {
     expect(isValidCasNumber('67-64')).toBe(false);
     expect(isValidCasNumber('abc-de-f')).toBe(false);
     expect(isValidCasNumber('')).toBe(false);
+  });
+});
+
+describe('normalizeCasNumber', () => {
+  it('trims surrounding whitespace', () => {
+    expect(normalizeCasNumber('  67-64-1  ')).toBe('67-64-1');
+  });
+
+  it.each([
+    ['67‑64‑1', 'non-breaking hyphen, from a web page'],
+    ['67–64–1', 'en dash, from a PDF or a word processor'],
+    ['67—64—1', 'em dash'],
+    ['67−64−1', 'minus sign'],
+  ])('maps %s to an ASCII hyphen (%s)', (value) => {
+    // These render identically to a plain hyphen, so a user pasting a CAS
+    // number from a catalogue sees a correct value rejected and has no way
+    // to tell why. There is exactly one valid separator in a CAS number, so
+    // mapping the lookalikes is deterministic rather than a guess — unlike a
+    // decimal separator, where a comma could mean two different numbers.
+    expect(normalizeCasNumber(value)).toBe('67-64-1');
+  });
+
+  it('leaves an already-clean value untouched', () => {
+    expect(normalizeCasNumber('7647-01-0')).toBe('7647-01-0');
+  });
+});
+
+describe('isValidCasNumber after normalisation', () => {
+  it('accepts a pasted value whose separators are en dashes', () => {
+    expect(isValidCasNumber('67–64–1')).toBe(true);
+  });
+
+  it('accepts a value with stray whitespace', () => {
+    expect(isValidCasNumber(' 67-64-1 ')).toBe(true);
+  });
+
+  it('still rejects a wrong check digit once normalised', () => {
+    // Normalising must not turn a genuinely invalid number into a valid one.
+    expect(isValidCasNumber(' 12345–67–9 ')).toBe(false);
   });
 });

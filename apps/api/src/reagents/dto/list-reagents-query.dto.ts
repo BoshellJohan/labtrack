@@ -1,4 +1,4 @@
-import { Transform } from 'class-transformer';
+import { Transform, TransformFnParams } from 'class-transformer';
 import {
   IsBoolean,
   IsDateString,
@@ -10,6 +10,7 @@ import {
   ValidateIf,
 } from 'class-validator';
 import { UNITS, type Unit } from '@labtrack/shared';
+import { normalizeCasNumber } from '../../common/validation/cas-number';
 import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 import { IsAfterOrEqual } from '../../common/validation/is-after-or-equal.validator';
 
@@ -20,7 +21,13 @@ export class ListReagentsQueryDto extends PaginationQueryDto {
   @IsString()
   name?: string;
 
+  // Normalised for the same reason the create path is: a CAS pasted into
+  // the filter with an en dash would match nothing, and the user would
+  // conclude the reagent is missing rather than that the dash is wrong.
   @IsOptional()
+  @Transform(({ value }: TransformFnParams): unknown =>
+    typeof value === 'string' ? normalizeCasNumber(value) : value,
+  )
   @IsString()
   casNumber?: string;
 
