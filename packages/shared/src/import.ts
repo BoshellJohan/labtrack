@@ -55,6 +55,7 @@ export type RowIssueCode =
   | 'EXPIRATION_BEFORE_ENTRY'
   | 'TOO_LONG'
   | 'DUPLICATE_LOT'
+  | 'LOT_EXISTS'
   | 'LOCATION_NOT_FOUND';
 
 export interface RowIssue {

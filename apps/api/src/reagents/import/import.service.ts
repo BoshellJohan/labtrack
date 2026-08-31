@@ -72,14 +72,58 @@ export class ImportService {
               casNumber: pair.cas,
             })),
           },
-          select: { name: true, nameNormalized: true, casNumber: true },
+          select: {
+            id: true,
+            name: true,
+            nameNormalized: true,
+            casNumber: true,
+          },
         })
       : [];
     const existingByKey = new Map(
       existingReagents.map((r) => [
         `${r.nameNormalized}|${r.casNumber}`,
-        r.name,
+        { id: r.id, name: r.name },
       ]),
+    );
+
+    // One query for every (reagentId, lotNumber) pair belonging to a row
+    // whose reagent already exists in the database, checked against
+    // *active* batches only. The unique index this must anticipate
+    // (`(reagentId, lotNumber) WHERE active`) is partial: a deactivated
+    // batch's lot number is free to reuse, so filtering on active here is
+    // not an optimisation, it is what keeps this check from reporting a
+    // conflict that the database itself would not.
+    const lotPairs = new Map<
+      string,
+      { reagentId: string; lotNumber: string }
+    >();
+    for (const row of rows) {
+      const key = `${normalizeForSearch(row.reagentName.trim())}|${row.casNumber.trim()}`;
+      const existing = existingByKey.get(key);
+      const lotNumber = row.lotNumber.trim();
+      if (existing && lotNumber) {
+        lotPairs.set(`${existing.id}|${lotNumber}`, {
+          reagentId: existing.id,
+          lotNumber,
+        });
+      }
+    }
+    const lotPairList = [...lotPairs.values()];
+    const existingBatches = lotPairList.length
+      ? await this.prisma.reagentBatch.findMany({
+          where: {
+            active: true,
+            OR: lotPairList.map((pair) => ({
+              reagentId: pair.reagentId,
+              lotNumber: pair.lotNumber,
+            })),
+          },
+          select: { reagentId: true, lotNumber: true },
+        })
+      : [];
+    const existingLotKeys = new Set(
+      existingBatches.map((b) => `${b.reagentId}|${b.lotNumber}`),
     );
 
     const verdicts: RowVerdict[] = rows.map((row) => {
@@ -97,10 +141,19 @@ export class ImportService {
       const cas = row.casNumber.trim();
       let reagent: RowVerdict['reagent'] = null;
       if (normalizedName && cas) {
-        const existingName = existingByKey.get(`${normalizedName}|${cas}`);
-        reagent = existingName
-          ? { action: 'reuse', existingName }
+        const existing = existingByKey.get(`${normalizedName}|${cas}`);
+        reagent = existing
+          ? { action: 'reuse', existingName: existing.name }
           : { action: 'create' };
+
+        const lotNumber = row.lotNumber.trim();
+        if (
+          existing &&
+          lotNumber &&
+          existingLotKeys.has(`${existing.id}|${lotNumber}`)
+        ) {
+          issues.push({ column: 'Lote', code: 'LOT_EXISTS' });
+        }
       }
 
       const normalizedUnit = row.unit.trim().toUpperCase();

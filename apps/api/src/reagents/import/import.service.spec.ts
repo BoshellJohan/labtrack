@@ -40,6 +40,9 @@ function buildService() {
       create: jest.fn().mockResolvedValue({ id: `created-${Math.random()}` }),
     },
     reagentBatch: {
+      // No lot conflicts by default; individual tests override this to
+      // exercise the LOT_EXISTS path.
+      findMany: jest.fn().mockResolvedValue([]),
       create: jest.fn().mockResolvedValue({}),
     },
   };
@@ -69,6 +72,10 @@ describe('ImportService.confirm', () => {
     // ever moves back inside the per-row loop, this count grows with the
     // row count and this assertion catches it; a looser bound would not.
     expect(client.reagent.findMany).toHaveBeenCalledTimes(2);
+    // Same rule, for the lot-existence check `preview` also runs against
+    // active batches: one query for every distinct (reagentId, lotNumber)
+    // pair in the file, not one per row.
+    expect(client.reagentBatch.findMany).toHaveBeenCalledTimes(1);
     expect(client.reagentBatch.create).toHaveBeenCalledTimes(5);
   });
 
@@ -101,6 +108,47 @@ describe('ImportService.confirm', () => {
     const rows = [row({ casNumber: 'not-a-cas' })];
 
     await expect(service.confirm(rows, 'admin-1')).rejects.toThrow();
+    expect(client.reagentBatch.create).not.toHaveBeenCalled();
+  });
+});
+
+describe('ImportService.preview — LOT_EXISTS', () => {
+  it('flags a row whose reagent already has an active batch under that lot number', async () => {
+    const { service, client } = buildService();
+    client.reagentBatch.findMany.mockResolvedValue([
+      { reagentId: 'existing-r1', lotNumber: 'L-1' },
+    ]);
+
+    const preview = await service.preview([row({ lotNumber: 'L-1' })]);
+
+    expect(preview.summary.invalidRows).toBe(1);
+    expect(preview.verdicts[0].issues).toContainEqual({
+      column: 'Lote',
+      code: 'LOT_EXISTS',
+    });
+  });
+
+  it('does not flag a lot number that only a deactivated batch holds', async () => {
+    const { service, client } = buildService();
+    // The mocked `reagentBatch.findMany` is called with `active: true` in
+    // its `where`, so a deactivated batch's lot is never returned by it —
+    // simulated here by returning nothing, as the real query would.
+    client.reagentBatch.findMany.mockResolvedValue([]);
+
+    const preview = await service.preview([row({ lotNumber: 'L-1' })]);
+
+    expect(preview.summary.invalidRows).toBe(0);
+  });
+
+  it('rejects confirm too, not only the preview', async () => {
+    const { service, client } = buildService();
+    client.reagentBatch.findMany.mockResolvedValue([
+      { reagentId: 'existing-r1', lotNumber: 'L-1' },
+    ]);
+
+    await expect(
+      service.confirm([row({ lotNumber: 'L-1' })], 'admin-1'),
+    ).rejects.toThrow();
     expect(client.reagentBatch.create).not.toHaveBeenCalled();
   });
 });

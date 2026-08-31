@@ -200,6 +200,110 @@ describe('Reagents import preview (e2e)', () => {
     expect(verdict.locationId).toBeNull();
   });
 
+  it('flags a lot number that reagent already has, even though nothing in the file repeats it', async () => {
+    const admin = await prisma.user.findUniqueOrThrow({
+      where: { username: 'admin' },
+    });
+    const location = await prisma.location.findFirstOrThrow({
+      where: { name: 'Estante A1' },
+    });
+    const reagent = await prisma.reagent.findFirstOrThrow({
+      where: { name: 'Acetona' },
+    });
+    await prisma.reagentBatch.create({
+      data: {
+        reagentId: reagent.id,
+        locationId: location.id,
+        lotNumber: 'L-EXISTING',
+        entryDate: new Date('2026-01-01'),
+        initialStock: '10.0000',
+        currentStock: '10.0000',
+        unit: 'ML',
+        madeById: admin.id,
+      },
+    });
+
+    const buffer = await workbookWith([
+      [
+        'Acetona',
+        '67-64-1',
+        '',
+        'L-EXISTING',
+        '2026-08-01',
+        '',
+        '5',
+        'ML',
+        'Estante A1',
+      ],
+    ]);
+    const token = await tokenFor('admin');
+    const response = await request(app.getHttpServer())
+      .post('/reagents/import/preview')
+      .set('Authorization', `Bearer ${token}`)
+      .attach('file', buffer, 'inventario.xlsx')
+      .expect(201);
+
+    const preview = body<ImportPreview>(response);
+    expect(preview.summary.invalidRows).toBe(1);
+    expect(preview.verdicts[0].issues).toContainEqual({
+      column: 'Lote',
+      code: 'LOT_EXISTS',
+    });
+  });
+
+  it('does not flag a lot number that only a deactivated batch holds', async () => {
+    const admin = await prisma.user.findUniqueOrThrow({
+      where: { username: 'admin' },
+    });
+    const location = await prisma.location.findFirstOrThrow({
+      where: { name: 'Estante A1' },
+    });
+    const reagent = await prisma.reagent.findFirstOrThrow({
+      where: { name: 'Acetona' },
+    });
+    const batch = await prisma.reagentBatch.create({
+      data: {
+        reagentId: reagent.id,
+        locationId: location.id,
+        lotNumber: 'L-FREED',
+        entryDate: new Date('2026-01-01'),
+        initialStock: '10.0000',
+        currentStock: '10.0000',
+        unit: 'ML',
+        madeById: admin.id,
+      },
+    });
+    await prisma.reagentBatch.update({
+      where: { id: batch.id },
+      data: { active: false },
+    });
+
+    const buffer = await workbookWith([
+      [
+        'Acetona',
+        '67-64-1',
+        '',
+        'L-FREED',
+        '2026-08-01',
+        '',
+        '5',
+        'ML',
+        'Estante A1',
+      ],
+    ]);
+    const token = await tokenFor('admin');
+    const response = await request(app.getHttpServer())
+      .post('/reagents/import/preview')
+      .set('Authorization', `Bearer ${token}`)
+      .attach('file', buffer, 'inventario.xlsx')
+      .expect(201);
+
+    // The unique index this check anticipates is partial (`WHERE active`):
+    // a deactivated batch's lot number is free to reuse, so this must not
+    // be reported as a conflict.
+    expect(body<ImportPreview>(response).summary.invalidRows).toBe(0);
+  });
+
   it('writes nothing at all', async () => {
     const before = await prisma.reagent.count();
     const buffer = await workbookWith([
@@ -486,6 +590,50 @@ describe('Reagents import confirm (e2e)', () => {
     // the preview said nothing about this row, because the client never showed
     // it to us.
     expect(await prisma.reagentBatch.count()).toBe(before);
+  });
+
+  it('rejects a lot number the reagent already has, even though the preview never saw it', async () => {
+    const admin = await prisma.user.findUniqueOrThrow({
+      where: { username: 'admin' },
+    });
+    const location = await prisma.location.findFirstOrThrow({
+      where: { name: 'Estante A1' },
+    });
+    const reagent = await prisma.reagent.findFirstOrThrow({
+      where: { name: 'Acetona' },
+    });
+    await prisma.reagentBatch.create({
+      data: {
+        reagentId: reagent.id,
+        locationId: location.id,
+        lotNumber: 'L-EXISTING',
+        entryDate: new Date('2026-01-01'),
+        initialStock: '10.0000',
+        currentStock: '10.0000',
+        unit: 'ML',
+        madeById: admin.id,
+      },
+    });
+    const batchesBefore = await prisma.reagentBatch.count();
+
+    const token = await tokenFor('admin');
+    await request(app.getHttpServer())
+      .post('/reagents/import/confirm')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        rows: [
+          rowFor({
+            reagentName: 'Acetona',
+            casNumber: '67-64-1',
+            lotNumber: 'L-EXISTING',
+          }),
+        ],
+      })
+      .expect(400);
+
+    // The preview is a convenience, not the enforcement: confirm re-runs the
+    // same check and must reject this row on its own.
+    expect(await prisma.reagentBatch.count()).toBe(batchesBefore);
   });
 
   it('refuses a non-admin', async () => {

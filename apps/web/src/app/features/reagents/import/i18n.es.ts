@@ -41,6 +41,8 @@ export const IMPORT_ES = {
     TOO_LONG: (p: { max: number }) => `Máximo ${p.max} caracteres.`,
     DUPLICATE_LOT: (p: { rows: readonly number[] }) =>
       `Este lote se repite en la fila ${p.rows.join(', ')}.`,
+    LOT_EXISTS: () =>
+      'Este reactivo ya tiene un lote con este número. Cambia el número de lote.',
     LOCATION_NOT_FOUND: () =>
       'Esta ubicación no existe. Créala antes de importar.',
   },
