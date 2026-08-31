@@ -4,6 +4,7 @@ import {
   ImportRow,
   RowIssue,
   RowVerdict,
+  isUnit,
 } from '@labtrack/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { normalizeForSearch } from '../../common/text/normalize';
@@ -98,11 +99,14 @@ export class ImportService {
           : { action: 'create' };
       }
 
+      const normalizedUnit = row.unit.trim().toUpperCase();
+      const unit = isUnit(normalizedUnit) ? normalizedUnit : null;
+
       return {
         row,
         issues,
         reagent,
-        unit: null,
+        unit,
         locationId,
       };
     });

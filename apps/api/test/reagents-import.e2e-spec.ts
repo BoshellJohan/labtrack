@@ -207,6 +207,60 @@ describe('Reagents import preview (e2e)', () => {
     expect(await prisma.reagent.count()).toBe(before);
   });
 
+  it('normalises a lowercase unit to the stored enum value', async () => {
+    const buffer = await workbookWith([
+      [
+        'Acetona',
+        '67-64-1',
+        '',
+        'L-9',
+        '2026-08-01',
+        '',
+        '5',
+        'ml',
+        'Estante A1',
+      ],
+    ]);
+    const token = await tokenFor('admin');
+    const response = await request(app.getHttpServer())
+      .post('/reagents/import/preview')
+      .set('Authorization', `Bearer ${token}`)
+      .attach('file', buffer, 'inventario.xlsx')
+      .expect(201);
+
+    expect(body<ImportPreview>(response).verdicts[0].unit).toBe('ML');
+  });
+
+  it('leaves unit null alongside an INVALID_UNIT issue for an unrecognised unit', async () => {
+    const buffer = await workbookWith([
+      [
+        'Acetona',
+        '67-64-1',
+        '',
+        'L-9',
+        '2026-08-01',
+        '',
+        '5',
+        'BARRELS',
+        'Estante A1',
+      ],
+    ]);
+    const token = await tokenFor('admin');
+    const response = await request(app.getHttpServer())
+      .post('/reagents/import/preview')
+      .set('Authorization', `Bearer ${token}`)
+      .attach('file', buffer, 'inventario.xlsx')
+      .expect(201);
+
+    const verdict = body<ImportPreview>(response).verdicts[0];
+    expect(verdict.unit).toBeNull();
+    expect(
+      verdict.issues.some(
+        (issue) => issue.column === 'Unidad' && issue.code === 'INVALID_UNIT',
+      ),
+    ).toBe(true);
+  });
+
   it('refuses a non-admin', async () => {
     const buffer = await workbookWith([
       [
