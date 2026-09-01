@@ -28,9 +28,43 @@ html {
 // `light-dark()` reads the element's `color-scheme`, which is why switching
 // the body below is all it takes to move the whole application -- including
 // these -- between schemes.
+// The dark half of every colour below is taken from the approved mockup, not
+// from what `mat.theme()` derives from the cyan palette. Two of them differ
+// enough to matter: Material's generated `primary` is a vivid #00dddd rather
+// than the softer teal, and its `on-surface-variant` is #dae5e4 -- so close to
+// the body colour that "muted" text stops reading as muted and an empty-table
+// message shouts as loudly as the data.
+//
+// The light half is left as Material generated it. Nothing renders it today
+// (`color-scheme` is dark), but keeping it means `light dark` stays a one-word
+// change rather than a second design exercise.
 html {
+  --mat-sys-surface: light-dark(#f7faf9, #12161a);
+  --mat-sys-surface-container-low: light-dark(#f1f4f3, #161b20);
+  --mat-sys-surface-container: light-dark(#ebefed, #171d22);
+  --mat-sys-surface-container-high: light-dark(#e6e9e7, #1c242a);
+  --mat-sys-on-surface: light-dark(#191c1c, #e6eaec);
+  --mat-sys-on-surface-variant: light-dark(#3f4948, #93a1aa);
+  --mat-sys-primary: light-dark(#006a6a, #6fd8bd);
+  --mat-sys-on-primary: light-dark(#ffffff, #06231d);
+  --mat-sys-error: light-dark(#ba1a1a, #f2938c);
+  --mat-sys-outline: light-dark(#6f7979, #4a565e);
+  --mat-sys-outline-variant: light-dark(#bec9c8, #232c33);
+
+  // Semantic colours Material 3 does not define. The theme ships `error`, but
+  // nothing for "expiring soon" or "completed" -- so those two were written as
+  // literal hex in whichever component needed them, and could not follow a
+  // colour scheme.
   --lt-warning: light-dark(#8a5a00, #f5c265);
   --lt-success: light-dark(#146c2e, #6fd8bd);
+
+  // Backgrounds for the two batch states. A tinted row carries the warning
+  // further down a long table than coloured text alone, which is why the
+  // mockup uses both.
+  --lt-warning-container: light-dark(#fff8e8, #2a2213);
+  --lt-warning-outline: light-dark(#f0dcae, #5c4a1f);
+  --lt-error-container: light-dark(#fdeceb, #2e1a19);
+  --lt-error-outline: light-dark(#f2c4c1, #6b2f2c);
 }
 
 body {

@@ -251,7 +251,12 @@ type ExpiryStatus = 'expired' | 'warning' | 'ok';
                     </ng-container>
 
                     <tr mat-header-row *matHeaderRowDef="batchColumns"></tr>
-                    <tr mat-row *matRowDef="let row; columns: batchColumns"></tr>
+                    <tr
+                      mat-row
+                      *matRowDef="let row; columns: batchColumns"
+                      [class.expired-row]="expiryStatus(row) === 'expired'"
+                      [class.warning-row]="expiryStatus(row) === 'warning'"
+                    ></tr>
                   </table>
                 }
                 @if (auth.isAdmin()) {
@@ -292,6 +297,11 @@ type ExpiryStatus = 'expired' | 'warning' | 'ok';
     .batches { padding: 1rem 0; }
     .expired { color: var(--mat-sys-error); font-weight: 600; }
     .warning { color: var(--lt-warning); font-weight: 600; }
+    /* The state is carried by the row as well as the date cell: on a long
+       batch list the tinted band is what a reader notices while scanning,
+       before they get as far as reading the date. */
+    .expired-row { background: var(--lt-error-container); box-shadow: inset 3px 0 0 var(--lt-error-outline); }
+    .warning-row { background: var(--lt-warning-container); box-shadow: inset 3px 0 0 var(--lt-warning-outline); }
   `,
 })
 export class ReagentsComponent implements OnInit {
