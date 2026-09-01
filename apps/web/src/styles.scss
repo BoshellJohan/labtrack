@@ -10,7 +10,7 @@ html {
   @include mat.theme(
     (
       color: (
-        primary: mat.$azure-palette,
+        primary: mat.$cyan-palette,
         tertiary: mat.$blue-palette,
       ),
       typography: Roboto,
@@ -19,11 +19,26 @@ html {
   );
 }
 
+// Semantic colours Material 3 does not define. The theme ships `error`, but
+// nothing for "expiring soon" or "completed" -- so those two were written as
+// literal hex in whichever component needed them, six times over, and could
+// not follow a colour scheme. They are tokens now, declared per scheme so a
+// dark surface gets a lifted value rather than the same ink on a dark ground.
+//
+// `light-dark()` reads the element's `color-scheme`, which is why switching
+// the body below is all it takes to move the whole application -- including
+// these -- between schemes.
+html {
+  --lt-warning: light-dark(#8a5a00, #f5c265);
+  --lt-success: light-dark(#146c2e, #6fd8bd);
+}
+
 body {
-  // Default the application to a light color theme. This can be changed to
-  // `dark` to enable the dark color theme, or to `light dark` to defer to the
-  // user's system settings.
-  color-scheme: light;
+  // The application runs on a dark surface. `light` and `light dark` are the
+  // other two valid values -- the second defers to the user's system setting,
+  // which is now a one-word change because nothing reads a hardcoded colour
+  // any more.
+  color-scheme: dark;
 
   // Set a default background, font and text colors for the application using
   // Angular Material's system-level CSS variables. Learn more about these

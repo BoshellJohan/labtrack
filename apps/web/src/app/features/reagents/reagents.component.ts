@@ -287,11 +287,11 @@ type ExpiryStatus = 'expired' | 'warning' | 'ok';
     .filters mat-form-field { min-width: 14rem; }
     .consumption-filters { display: flex; gap: 1rem; flex-wrap: wrap; align-items: flex-start; }
     table { width: 100%; }
-    .empty { color: rgba(0, 0, 0, 0.6); }
+    .empty { color: var(--mat-sys-on-surface-variant); }
     .detail-row td { border-bottom-width: 0; }
     .batches { padding: 1rem 0; }
-    .expired { color: #b3261e; font-weight: 600; }
-    .warning { color: #8a5a00; font-weight: 600; }
+    .expired { color: var(--mat-sys-error); font-weight: 600; }
+    .warning { color: var(--lt-warning); font-weight: 600; }
   `,
 })
 export class ReagentsComponent implements OnInit {

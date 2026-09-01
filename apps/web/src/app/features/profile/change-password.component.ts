@@ -54,8 +54,8 @@ import { COMMON_ES } from '../../shared/i18n/es';
   styles: `
     .card { max-width: 28rem; margin: 3rem auto; padding: 2rem; }
     form { display: flex; flex-direction: column; gap: 1rem; }
-    .notice { color: var(--mat-sys-primary, #005cbb); }
-    .error { color: var(--mat-sys-error, #b3261e); margin: 0; }
+    .notice { color: var(--mat-sys-primary); }
+    .error { color: var(--mat-sys-error); margin: 0; }
   `,
 })
 export class ChangePasswordComponent {

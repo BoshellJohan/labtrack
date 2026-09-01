@@ -105,7 +105,7 @@ import { createSpanishPaginatorIntl } from '../../shared/i18n/spanish-paginator-
     header { display: flex; align-items: center; justify-content: space-between; }
     .search { max-width: 24rem; }
     table { width: 100%; }
-    .empty { color: rgba(0, 0, 0, 0.6); }
+    .empty { color: var(--mat-sys-on-surface-variant); }
   `,
 })
 export class LocationsComponent implements OnInit {

@@ -186,7 +186,7 @@ import { ApiService, QueryParams } from '../../core/api/api.service';
     .filters { display: flex; flex-wrap: wrap; gap: 1rem; align-items: center; }
     .export-actions { display: flex; gap: 0.75rem; }
     table { width: 100%; }
-    .empty { color: rgba(0, 0, 0, 0.6); }
+    .empty { color: var(--mat-sys-on-surface-variant); }
   `,
 })
 export class ConsumptionsComponent implements OnInit {

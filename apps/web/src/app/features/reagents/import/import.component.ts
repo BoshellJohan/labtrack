@@ -125,8 +125,8 @@ import { REAGENTS_ES } from '../i18n.es';
     .card { max-width: 60rem; margin: 0 auto; padding: 2rem; display: flex; flex-direction: column; gap: 1rem; }
     .upload { display: flex; }
     table { width: 100%; }
-    .error, .invalid { color: #b3261e; }
-    .confirmed { color: #146c2e; }
+    .error, .invalid { color: var(--mat-sys-error); }
+    .confirmed { color: var(--lt-success); }
   `,
 })
 export class ImportComponent {

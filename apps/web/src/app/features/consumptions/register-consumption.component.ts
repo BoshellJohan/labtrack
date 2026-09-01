@@ -129,7 +129,7 @@ const QUANTITY_PATTERN = /^\d{1,8}(\.\d{1,4})?$/;
   styles: `
     .page { padding: 1.5rem; display: flex; flex-direction: column; gap: 1rem; max-width: 30rem; }
     form { display: flex; flex-direction: column; gap: 0.5rem; }
-    .hint { color: rgba(0, 0, 0, 0.6); margin: 0; }
+    .hint { color: var(--mat-sys-on-surface-variant); margin: 0; }
   `,
 })
 export class RegisterConsumptionComponent implements OnInit {

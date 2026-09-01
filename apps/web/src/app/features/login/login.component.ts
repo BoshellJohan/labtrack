@@ -46,7 +46,7 @@ import { LOGIN_ES } from '../../shared/i18n/es';
   styles: `
     .login-card { max-width: 24rem; margin: 4rem auto; padding: 2rem; }
     form { display: flex; flex-direction: column; gap: 1rem; }
-    .error { color: var(--mat-sys-error, #b3261e); margin: 0; }
+    .error { color: var(--mat-sys-error); margin: 0; }
   `,
 })
 export class LoginComponent {
